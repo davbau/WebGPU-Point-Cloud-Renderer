@@ -26,6 +26,9 @@ jobs:
       run: |
         npm install
         npx webpack
+
+    - name: List dist contents
+      run: ls -la ./dist
         
     - name: Deploy to GitHub Pages
       if: github.ref == 'refs/heads/main'
