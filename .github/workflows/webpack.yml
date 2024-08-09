@@ -28,7 +28,7 @@ jobs:
         npx webpack
 
     - name: List dist contents
-      run: ls -la ./dist
+      run: ls -la ./
         
     - name: Deploy to GitHub Pages
       if: github.ref == 'refs/heads/main'
