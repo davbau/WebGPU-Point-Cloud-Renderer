@@ -24,7 +24,7 @@ export class BlenderCamera {
         this.far = far;
 
         this.rotationSpeed = 0.05;
-        this.movementSpeed = 0.01;
+        this.movementSpeed = 0.1;
         this.scrollSpeed = 0.01;
 
         this.cameraMatrix = mat4.identity();
@@ -49,10 +49,18 @@ export class BlenderCamera {
     }
 
     moveCameraAlongViewDirectionScaled(vec: vec3.default) {
-        const translation = vec3.create();
-        mat4.getTranslation(mat4.translate(this.cameraMatrix, vec), translation);
-        this.sphericalCoordinate.moveCenter(vec3.scale(translation, this.movementSpeed));
-        this.matricesNeedToBeUpdated = true;
+        // extract up and right vector from camera matrix
+        const up = vec3.create(this.cameraMatrix[1], this.cameraMatrix[5], this.cameraMatrix[9]);
+        vec3.normalize(up, up);
+        const right = vec3.create(this.cameraMatrix[0], this.cameraMatrix[4], this.cameraMatrix[8]);
+        vec3.normalize(right, right);
+        // move along right and up vector
+
+        const scaledRight = vec3.scale(right, vec[0] * this.movementSpeed);
+        const scaledUp = vec3.scale(up, vec[1] * this.movementSpeed);
+
+        const movement = vec3.add(scaledRight, scaledUp);
+        this.moveCameraBase(movement);
     }
 
     rotateUpDown(angle: number) {

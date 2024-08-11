@@ -1,11 +1,28 @@
-import {SmallLASLoader} from "./SmallLASLoader";
+import {LAS_FILE_ENDINGS, SmallLASLoader} from "./SmallLASLoader";
+import {ArrayBufferHandler} from "./ArrayBufferHandler";
 
 export class FileDropHandler {
     private container: HTMLElement;
+    private loadedFiles: string[];
+    private loadedArrayBuffers: ArrayBuffer[];
+    // private isArrayBufferClaimed: boolean[];
 
-    constructor(container: HTMLElement) {
+    private arrayBufferHandler: ArrayBufferHandler;
+
+    constructor(container: HTMLElement, maxBufferSize: number) {
         this.container = container;
+
+        this.loadedFiles = [];
+        this.loadedArrayBuffers = [];
+        // this.isArrayBufferClaimed = [];
+
+        this.arrayBufferHandler = new ArrayBufferHandler(maxBufferSize);
+
         this.init();
+    }
+
+    getArrayBufferHandler() {
+        return this.arrayBufferHandler;
     }
 
     init() {
@@ -47,22 +64,86 @@ export class FileDropHandler {
             });
         }
 
-        this.loadDroppedFiles(loadedFiles).then(r => {
-            console.log("Loaded files", r);
-        });
+        /*
+                this.loadDroppedFiles(loadedFiles).then(r => {
+                    console.log("Loaded files", r);
+
+                    for (let loadedFile of r) {
+
+                    }
+                });
+        */
+        this.loadDroppedFiles(loadedFiles);
     }
 
-    lasLoader = new SmallLASLoader();
+    claimArrayBufferPoints(number_of_points: number) {
+        if (this.loadedArrayBuffers.length === 0) {
+            // console.log("No array buffers loaded");
+            return;
+        }
+        let number_of_bytes = number_of_points * 4 * Float32Array.BYTES_PER_ELEMENT;
+        while (number_of_bytes > 0 && this.loadedArrayBuffers.length > 0) {
+            const buffer = this.loadedArrayBuffers.pop()!; // Can force this because we checked the length before.
+            if (buffer.byteLength > number_of_bytes) {
+                // add buffer to handler
+                const slice = buffer.slice(0, number_of_bytes);
+                this.arrayBufferHandler.add(slice);
+                // add the rest back to the loadedArrayBuffers
+                this.loadedArrayBuffers.push(buffer.slice(number_of_bytes));
+                number_of_points -= slice.byteLength;
+            } else {
+                this.arrayBufferHandler.add(buffer);
+                number_of_points -= buffer.byteLength;
+            }
+        }
+    }
 
-    loadDroppedFiles(files: File[]): Promise<Array<ArrayBuffer>> {
+    private lasLoader = new SmallLASLoader();
+
+    /*
+    loadDroppedFiles(files: File[]): Promise<Awaited<null | ArrayBuffer>[]> {
         return Promise.all(files.map(async (file) => {
+            if (this.loadedFiles.includes(file.name)) {
+                console.log("Already loaded file", file.name);
+                return null;
+            }
             if (file.name.endsWith(".las")) {
                 const header = await this.lasLoader.loadLasHeader(file);
+                console.log("loading las file", file, header);
+                this.loadedFiles.push(file.name);
                 return await this.lasLoader.loadLasPointsAsBuffer(file, header);
             } else {
-                return await file.arrayBuffer();
+                return null;
             }
         }));
+    }
+     */
+    async loadDroppedFiles(files: File[]) {
+        for (let file of files) {
+            if (this.loadedFiles.includes(file.name)) {
+                console.log("Already loaded file", file.name);
+                continue;
+            }
+            if (!this.hasLasEnding(file.name)) {
+                console.log("File does not have las ending", file.name);
+                continue;
+            }
+            const header = await this.lasLoader.loadLasHeader(file);
+            console.log("loading las file", file, header);
+            this.loadedFiles.push(file.name);
+            const points = await this.lasLoader.loadLasPointsAsBuffer(file, header);
+            this.loadedArrayBuffers.push(points);
+            // this.isArrayBufferClaimed.push(false);
+        }
+    }
+
+    hasLasEnding(fileName: string): boolean {
+        for (let lasFileEnding of LAS_FILE_ENDINGS) {
+            if (fileName.endsWith(lasFileEnding)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     dragOverHandler(ev: DragEvent) {

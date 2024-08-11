@@ -1,5 +1,10 @@
 import {double, Point, u_char, u_long, u_long_long, u_short} from "./types/c_equivalents";
 
+export const LAS_FILE_ENDINGS = [
+    ".las",
+    ".LAS"
+];
+
 export type LASHeader_small = {
     versionMajor: u_char;
     versionMinor: u_char;
