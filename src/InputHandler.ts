@@ -27,7 +27,7 @@ export class InputHandler {
 
         // middle click to move camera
         if (event.buttons === 4) {
-            this.camera.moveCameraBaseScaled([event.movementX, event.movementY, 0]);
+            this.camera.moveCameraAlongViewDirectionScaled([event.movementX, -event.movementY, 0]);
         }
     }
 
