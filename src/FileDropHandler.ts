@@ -76,7 +76,7 @@ export class FileDropHandler {
         this.loadDroppedFiles(loadedFiles);
     }
 
-    claimArrayBufferPoints(number_of_points: number) {
+    claimFileArrayBuffers(number_of_points: number) {
         if (this.loadedArrayBuffers.length === 0) {
             // console.log("No array buffers loaded");
             return;
@@ -132,7 +132,9 @@ export class FileDropHandler {
             console.log("loading las file", file, header);
             this.loadedFiles.push(file.name);
             const points = await this.lasLoader.loadLasPointsAsBuffer(file, header);
-            this.loadedArrayBuffers.push(points);
+            console.log("got ", points, " points from ", file.name);
+            this.arrayBufferHandler.add(points);
+            // this.loadedArrayBuffers.push(points);
             // this.isArrayBufferClaimed.push(false);
         }
     }

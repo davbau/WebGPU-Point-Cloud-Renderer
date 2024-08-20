@@ -38,9 +38,18 @@ const maxWorkgroupsPerDimension = device.limits.maxComputeWorkgroupsPerDimension
 const maxStorageBufferBindingSize = device.limits.maxStorageBufferBindingSize;
 
 // Region Drag and Drop
+// const BUFFER_HANDLER_SIZE = 4e6 * SIZE_OF_POINT;
+const BUFFER_HANDLER_SIZE = maxStorageBufferBindingSize;
 const container = document.getElementById("container") as HTMLDivElement;   // The container element
-const fileDropHandler = new FileDropHandler(container, maxStorageBufferBindingSize);
+const fileDropHandler = new FileDropHandler(container, BUFFER_HANDLER_SIZE);
 const arrayBufferHandler = fileDropHandler.getArrayBufferHandler();
+
+const gui = new GUI();
+// GUI parameters
+const params: { type: 'model' | 'cube' } = {
+    type: 'model',
+};
+gui.add(params, 'type', ['model', 'cube']);
 
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
@@ -107,6 +116,8 @@ const depthBuffer = device.createBuffer({
 // depthBuffer.unmap();
 // Region Storage Buffer
 
+let useCube = true;
+
 function createRandomPoints(n: number): Point[] {
     const points: Point[] = [];
     const white: u_int32 = 0xffffff;
@@ -164,38 +175,45 @@ function convertPointsToArrayBuffer(points: Point[]): ArrayBuffer {
 // max number of points is 2^16 - 1
 // const points = createRandomPoints(NUMBER_OF_POINTS);
 // const pointsArr = convertPointsToArrayBuffer(createDepthBufferTest(NUMBER_OF_POINTS));
-// const pointsArr = convertPointsToArrayBuffer(createRandomPoints(NUMBER_OF_POINTS));
+// const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(BUFFER_HANDLER_SIZE / 16));
+const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(1e5));
 
 // const pointsArr = convertPointsToArrayBuffer(las_points_as_points);
 // const pointsArr = await lassLoader.loadLASPointsAsBuffer(file_path, las_header);
-let pointsArr = new ArrayBuffer(maxStorageBufferBindingSize); // 16 is the minimum binding size
+// let pointsArr = new ArrayBuffer(maxStorageBufferBindingSize); // 16 is the minimum binding size
+// let pointsArr = new ArrayBuffer(arrayBufferHandler.getBufferSize()); // 16 is the minimum binding size
 
 // let numberOfPoints = pointsArr.byteLength / (4 * Float32Array.BYTES_PER_ELEMENT);
-let numberOfPoints = 1;
-let pointsOverWorkgroups = 0;
-if (pointsArr.byteLength != 0) {
-    pointsOverWorkgroups = getPointsOverWorkgroups(numberOfPoints);
-}
+// let numberOfPoints = 1;
+// let pointsOverWorkgroups = 0;
+// if (pointsArr.byteLength != 0) {
+//     pointsOverWorkgroups = getPointsOverWorkgroups(numberOfPoints);
+// }
+let numberOfPoints = 0;
 
 function getPointsOverWorkgroups(numberOfPoints: number) {
+    if (numberOfPoints == 0) {
+        return 0;
+    }
     return numberOfPoints / Math.min(numberOfPoints, maxWorkgroupsPerDimension);
 }
 
-console.log('points written to GPU: ', pointsArr);
+// console.log('points written to GPU: ', pointsArr);
 const pointsBuffer = device.createBuffer({
     label: "points buffer",
     // size: points.length * 16,
     // size: las_points_as_buffer.byteLength,
     // size: las_points_as_points.length * 16,
-    size: pointsArr.byteLength,
+    size: arrayBufferHandler.getBufferSize(),
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-    mappedAtCreation: true,
+    mappedAtCreation: false,
 });
 // console.log(points);
-new Float32Array(pointsBuffer.getMappedRange()).set(new Float32Array(pointsArr));
-pointsBuffer.unmap();
+// new Float32Array(pointsBuffer.getMappedRange()).set(new Float32Array(arrayBufferHandler.getBufferSize() - 1));
+// pointsBuffer.unmap();
 
-const STAGING_BUFFER_SIZE = 1e6 * (4 * Float32Array.BYTES_PER_ELEMENT);
+// const STAGING_BUFFER_SIZE = 1e6 * SIZE_OF_POINT;
+const STAGING_BUFFER_SIZE = BUFFER_HANDLER_SIZE;
 const stagingBuffer = device.createBuffer({
     size: STAGING_BUFFER_SIZE,
     usage: GPUBufferUsage.MAP_WRITE |
@@ -244,6 +262,7 @@ const display_renderPassDescriptor = Util.create_display_RenderPassDescriptor(co
 
 // Region frame
 const aspect = canvas.width / canvas.height;
+console.log('aspect: ', aspect);
 // const camera = new BlenderCamera(60, aspect, 0.1, 100);
 // const inputHandler = new InputHandler(canvas, camera);
 // inputHandler.registerInputHandlers();
@@ -258,47 +277,19 @@ const camera = new BlenderCamera(Math.PI / 4, aspect, 1, 100);
 const inputHandler = new InputHandler(canvas, camera);
 inputHandler.registerInputHandlers();
 
-/*
-// const camera = new Camera(60, aspect, 0.1, 100);
-// const camera = new FPSCamera(60, aspect, 0.1, 100);
-// camera.translateCamera(0, -1, -2);
-// camera.translateCamera(0, 0, -2);
-
-// camera.moveUp(2);
-// camera.moveForward(-5);
-// camera.fixedRotate(0, Math.PI / 2);
-
-let mouseHeld = false;
-canvas.addEventListener('pointerdown', () => {
-    mouseHeld = true;
-});
-canvas.addEventListener('pointerup', () => {
-    mouseHeld = false;
-});
-canvas.addEventListener('pointermove', (event) => {
-    if (mouseHeld) {
-        // old camera
-        // camera.rotateCamera(0, 1, 0, event.movementX);
-        // camera.rotateCamera(1, 0, 0, -event.movementY);
-
-        // new camera
-        // camera.rotate(event.movementY, -event.movementX);
-    }
-});
-*/
-
 const modelMatrix = mat4.identity();
 const mVP = mat4.create();
 const screen_size = vec2.create(canvas.width, canvas.height);
 
 import Stats from "stats.js";
 import {FPSCamera} from "./FPSCamera";
-import {Point, u_int32} from "./types/c_equivalents";
+import {Point, SIZE_OF_POINT, u_int32} from "./types/c_equivalents";
 
 import {InputHandler} from "./InputHandler";
 import {BlenderCamera} from "./BlenderCamera";
 import {FileDropHandler} from "./FileDropHandler";
 import {ArrayBufferHandler} from "./ArrayBufferHandler";
+import {GUI} from "dat.gui";
 
 const stats = new Stats();
 stats.showPanel(0);
@@ -319,6 +310,20 @@ const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(
 // unmap depth buffer
 depthBuffer.unmap();
 
+const writeToBufferDirectly = true;
+
+if (true) {
+    console.log('cube')
+    device.queue.writeBuffer(
+        pointsBuffer,
+        0,
+        cubePointsArr,
+        0,
+        cubePointsArr.byteLength
+        // 1e5 * SIZE_OF_POINT
+    );
+}
+
 async function generateFrame() {
     stats.begin();
 
@@ -333,39 +338,19 @@ async function generateFrame() {
 
     const commandEncoder = device.createCommandEncoder();
 
-    fileDropHandler.claimArrayBufferPoints(1e6);
+    // mat4.multiply(camera.getViewProjectionMatrix(), modelMatrix, mVP);
+    mat4.multiply(camera.getViewProjectionMatrix(), mat4.identity(), mVP);
 
-    if (arrayBufferHandler.bufferShouldBeRead) {
-        await stagingBuffer.mapAsync(GPUMapMode.WRITE).then(() => {
-            let data = new Float32Array(stagingBuffer.getMappedRange());
-            const newPoints = arrayBufferHandler.popN_Bytes(STAGING_BUFFER_SIZE);
-            data.set(new Float32Array(newPoints));
-            stagingBuffer.unmap();
+    // debug_div.innerText = `Number of points: ${numberOfPoints}
+    // Number of workgroups: ${Math.min(numberOfPoints, maxWorkgroupsPerDimension)}, ${Math.ceil(getPointsOverWorkgroups(numberOfPoints))}
+    // Camera Matrix is \n${formatF32Array(camera.getViewMatrix())} \n
+    // MVP Matrix is \n${formatF32Array(mVP)} \n
+    // Model Matrix is \n${formatF32Array(modelMatrix)}`;
 
-            console.log('newPoints: ', newPoints);
-
-            commandEncoder.copyBufferToBuffer(
-                stagingBuffer,
-                0,
-                pointsBuffer,
-                numberOfPoints * 16,
-                newPoints.byteLength
-            );
-            numberOfPoints += newPoints.byteLength / 16;
-            pointsOverWorkgroups = getPointsOverWorkgroups(numberOfPoints);
-        }).catch((error) => {
-            console.error(error);
-        });
-    }
-
-    mat4.multiply(camera.getViewProjectionMatrix(), modelMatrix, mVP);
-
-    debug_div.innerText = `Number of points: ${numberOfPoints}
-    Number of workgroups: ${Math.min(numberOfPoints, maxWorkgroupsPerDimension)}
-    Points / Workgroup: ${pointsOverWorkgroups}
-    Camera Matrix is \n${formatF32Array(camera.getViewMatrix())} \n
-    MVP Matrix is \n${formatF32Array(mVP)} \n
-    Model Matrix is \n${formatF32Array(modelMatrix)}`;
+    debug_div.innerText = `viewmatrix is \n \t ${formatF32Array(camera.getViewMatrix())} \n
+    view projection is \n \t ${formatF32Array(camera.getViewProjectionMatrix())} \n
+    transformation matrix is \n \t${formatF32Array(mVP)}\n
+    camera base: ${camera.sphericalCoordinate.centerInWorld}\n`;
 
     const uniform_data = new Float32Array([
         screen_size[0], screen_size[1],
@@ -375,28 +360,72 @@ async function generateFrame() {
     device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
 
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
+    numberOfPoints = 0;
 
-    // Compute depth
-    const compute_depth_pass = commandEncoder.beginComputePass();
-    compute_depth_pass.setPipeline(compute_depth_pipeline);
-    compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup);
-    // computePass.dispatchWorkgroups(Math.min(numberOfPoints, maxWorkgroupsPerDimension));
-    compute_depth_pass.dispatchWorkgroups(
-        Math.max(1, Math.min(numberOfPoints, maxWorkgroupsPerDimension)),
-        Math.max(1, Math.min(Math.ceil(pointsOverWorkgroups), maxWorkgroupsPerDimension)),
-        1);
-    compute_depth_pass.end();
+    for (let i = 0; i < arrayBufferHandler.numberOfBuffers(); i++) {
+        const currentBuffer = arrayBufferHandler.getBuffer(i);
+        let nr_pointsInCurrentBuffer = arrayBufferHandler.getBufferLength(i) / SIZE_OF_POINT;
 
-    // Compute
-    const computePass = commandEncoder.beginComputePass();
-    computePass.setPipeline(computePipeline);
-    computePass.setBindGroup(0, compute_shader_bindGroup);
-    // computePass.dispatchWorkgroups(Math.min(numberOfPoints, maxWorkgroupsPerDimension));
-    computePass.dispatchWorkgroups(
-        Math.max(1, Math.min(numberOfPoints, maxWorkgroupsPerDimension)),
-        Math.max(1, Math.min(Math.ceil(pointsOverWorkgroups), maxWorkgroupsPerDimension)),
-        1);
-    computePass.end();
+        // console.log('buffer', i, 'points: ', currentBuffer);
+        // console.log('points in this buffer: ', nr_pointsInCurrentBuffer);
+        if (params.type === 'cube') {
+            nr_pointsInCurrentBuffer = cubePointsArr.byteLength / SIZE_OF_POINT;
+        } else {
+            if (writeToBufferDirectly) {
+                // Write to buffer directly.
+                device.queue.writeBuffer(
+                    pointsBuffer,
+                    0,
+                    currentBuffer,
+                    0,
+                    nr_pointsInCurrentBuffer * SIZE_OF_POINT
+                );
+            } else {
+                // Write to staging buffer
+                await stagingBuffer.mapAsync(GPUMapMode.WRITE).then(() => {
+                    let data = new Float32Array(stagingBuffer.getMappedRange());
+                    const newPoints = new Float32Array(currentBuffer);
+                    data.set(newPoints);
+                    stagingBuffer.unmap();
+
+                    // Then copy staging to points buffer
+                    commandEncoder.copyBufferToBuffer(
+                        stagingBuffer,
+                        0,
+                        pointsBuffer,
+                        numberOfPoints * SIZE_OF_POINT,
+                        newPoints.byteLength
+                    );
+                }).catch((error) => {
+                    console.error(error);
+                });
+            }
+        }
+        const pointsInThisBufferOverWorkgroups = getPointsOverWorkgroups(nr_pointsInCurrentBuffer);
+        numberOfPoints += nr_pointsInCurrentBuffer;
+
+        // Compute depth
+        const compute_depth_pass = commandEncoder.beginComputePass();
+        compute_depth_pass.setPipeline(compute_depth_pipeline);
+        compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup);
+        // computePass.dispatchWorkgroups(Math.min(batchSize, maxWorkgroupsPerDimension));
+        compute_depth_pass.dispatchWorkgroups(
+            Math.max(1, Math.min(nr_pointsInCurrentBuffer, maxWorkgroupsPerDimension)),
+            Math.max(1, Math.min(Math.ceil(pointsInThisBufferOverWorkgroups), maxWorkgroupsPerDimension)),
+            1);
+        compute_depth_pass.end();
+
+        // Compute
+        const computePass = commandEncoder.beginComputePass();
+        computePass.setPipeline(computePipeline);
+        computePass.setBindGroup(0, compute_shader_bindGroup);
+        // computePass.dispatchWorkgroups(Math.min(batchSize, maxWorkgroupsPerDimension));
+        computePass.dispatchWorkgroups(
+            Math.max(1, Math.min(nr_pointsInCurrentBuffer, maxWorkgroupsPerDimension)),
+            Math.max(1, Math.min(Math.ceil(pointsInThisBufferOverWorkgroups), maxWorkgroupsPerDimension)),
+            1);
+        computePass.end();
+    }
 
     // reset viewport
     (display_renderPassDescriptor.colorAttachments as GPURenderPassColorAttachment[])[0]

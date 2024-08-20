@@ -41,7 +41,7 @@ fn main(
 
     // Convert ndc to screen space coordinates
     let screen_x = (ndc.x * 0.5 + 0.5) * uniforms.canvas_size.x;
-    let screen_y = (ndc.y) * uniforms.canvas_size.y;
+    let screen_y = (ndc.y * 0.5 + 0.5) * uniforms.canvas_size.y;
 
     // Discard
     if (screen_x < 0.0 || screen_x >= uniforms.canvas_size.x) {

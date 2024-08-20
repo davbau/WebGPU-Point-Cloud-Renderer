@@ -14,3 +14,5 @@ export type Point = {
     z: f32,
     color: u_int32,
 };
+
+export const SIZE_OF_POINT = 4 * Float32Array.BYTES_PER_ELEMENT; // 4 * 4 bytes

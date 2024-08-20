@@ -2,56 +2,79 @@ const sizeOfPoints = 4 * Float32Array.BYTES_PER_ELEMENT;
 
 // ArrayList like implementation for ArrayBuffer
 export class ArrayBufferHandler {
-    private buffer: ArrayBuffer;
-    private size: number;
-    private previousSize: number;
+    private buffers: ArrayBuffer[];
+    /**
+     * The size of the last buffer in the buffers array. This is needed because the last buffer may not be full.
+     * @private
+     */
+    private writtenSizeOfLastBuffer: number;
     // The size it was initialized with
-    private maxSize: number;
-    bufferShouldBeRead: boolean;
+    /**
+     * The size of the buffers in the buffers array. All buffers are of the same size.
+     * The size of the last buffer may be smaller than the initial size. It is stored in writtenSizeOfLastBuffer.
+     * @private
+     */
+    private initialBufferSize: number;
 
-    constructor(maxSize: number) {
-        this.buffer = new ArrayBuffer(maxSize);
-        this.size = 0;
-        this.previousSize = 0;
-        this.maxSize = maxSize;
-        this.bufferShouldBeRead = false;
+    constructor(bufferSize: number) {
+        this.buffers = [];
+        this.buffers.push(new ArrayBuffer(bufferSize));
+        this.writtenSizeOfLastBuffer = 0;
+        this.initialBufferSize = bufferSize;
     }
 
+    /**
+     * Add data to the array of buffers. All buffers are of the same size = maxSize. The data may be split into multiple buffers if it exceeds the maxSize or a buffer is full.
+     * @param data The data to be added to the buffers. Arbitrary length.
+     */
     add(data: ArrayBuffer) {
-        if (this.size + data.byteLength > this.maxSize) {
-            throw new Error("Buffer overflow");
+        console.log("Adding", data.byteLength, "bytes to buffers; =", data.byteLength / sizeOfPoints, "points");
+        const currentSize = this.writtenSizeOfLastBuffer;
+        const currentBuffer = this.buffers[this.buffers.length - 1];
+        const currentBufferView = new Uint8Array(currentBuffer);
+        const dataView = new Uint8Array(data);
+
+        const remainingSpace = this.initialBufferSize - currentSize;
+
+        if (data.byteLength <= remainingSpace) {
+            currentBufferView.set(dataView, currentSize);
+            this.writtenSizeOfLastBuffer += data.byteLength;
+            console.log("Added", data.byteLength, "bytes to current buffer");
+        } else {
+            // add remaining space to current buffer
+            const remainingData = dataView.slice(0, remainingSpace);
+            currentBufferView.set(remainingData, currentSize);
+            console.log("Added", remainingData.byteLength, "bytes to current buffer");
+
+            // add new buffer
+            this.writtenSizeOfLastBuffer = 0;
+            try {
+                this.buffers.push(new ArrayBuffer(this.initialBufferSize));
+            } catch (e) {
+                console.log("Error adding new buffer", e);
+                return;
+            }
+            // recursively add the rest of the data
+            this.add(data.slice(remainingSpace));
         }
-
-        const view = new Uint8Array(this.buffer);
-        view.set(new Uint8Array(data), this.size);
-        this.size += data.byteLength;
-
-        console.log("Added", data.byteLength, "bytes to buffer");
-        this.bufferShouldBeRead = true;
     }
 
-    getBuffer(skipNPoints: number = 0) {
-        this.bufferShouldBeRead = false;
-        return this.buffer.slice(skipNPoints * sizeOfPoints, this.size);
+    getBuffer(buffer_num: number) {
+        return this.buffers[buffer_num];
     }
 
-    getOnlyNewData() {
-        const newBytes = this.size - this.previousSize;
-        const data = this.buffer.slice(this.previousSize, this.size);
-        this.previousSize = this.size;
-        return {data, newBytes};
+    getBufferLength(buffer_num: number) {
+        if (buffer_num == this.buffers.length - 1) {
+            return this.writtenSizeOfLastBuffer;
+        }
+        return this.initialBufferSize;
     }
 
-    popN_Bytes(numberOfBytes: number) {
-        if (this.size == 0) {
-            this.bufferShouldBeRead = false;
-        }
-        if (numberOfBytes > this.size) {
-            numberOfBytes = this.size;
-        }
-        const data = this.buffer.slice(this.size - numberOfBytes, this.size);
-        this.size -= data.byteLength;
-        console.log("Popped", data.byteLength, "bytes from buffer", this.size, "bytes left");
-        return data;
+    numberOfBuffers(): number {
+        return this.buffers.length;
+    }
+
+    getBufferSize(): number {
+        return this.initialBufferSize;
     }
 }
