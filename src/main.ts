@@ -300,8 +300,7 @@ document.body.appendChild(stats.dom);
 // mat4.rotate(modelMatrix, [-1, 0, 0], Math.PI / 2, modelMatrix);
 mat4.rotate(modelMatrix, [0, 0, 1], 90 * Math.PI / 180, modelMatrix);
 mat4.rotate(modelMatrix, [0, 1, 0], 180 * Math.PI / 180, modelMatrix);
-
-// mat4.rotate(modelMatrix, [0, 0, 1], 90 * Math.PI / 180, modelMatrix);
+// mat4.rotate(modelMatrix, [0, 1, 0], 90 * Math.PI / 180, modelMatrix);
 
 mat4.translate(modelMatrix, [-0.5, -0.5, 0.5], modelMatrix);
 
@@ -338,8 +337,8 @@ async function generateFrame() {
 
     const commandEncoder = device.createCommandEncoder();
 
-    // mat4.multiply(camera.getViewProjectionMatrix(), modelMatrix, mVP);
-    mat4.multiply(camera.getViewProjectionMatrix(), mat4.identity(), mVP);
+    mat4.multiply(camera.getViewProjectionMatrix(), modelMatrix, mVP);
+    // mat4.multiply(camera.getViewProjectionMatrix(), mat4.identity(), mVP);
 
     // debug_div.innerText = `Number of points: ${numberOfPoints}
     // Number of workgroups: ${Math.min(numberOfPoints, maxWorkgroupsPerDimension)}, ${Math.ceil(getPointsOverWorkgroups(numberOfPoints))}
@@ -350,7 +349,7 @@ async function generateFrame() {
     debug_div.innerText = `viewmatrix is \n \t ${formatF32Array(camera.getViewMatrix())} \n
     view projection is \n \t ${formatF32Array(camera.getViewProjectionMatrix())} \n
     transformation matrix is \n \t${formatF32Array(mVP)}\n
-    camera base: ${camera.sphericalCoordinate.centerInWorld}\n`;
+    camera base: ${camera.sphericalCoordinate.centerInWorld.join(', ')}\n`;
 
     const uniform_data = new Float32Array([
         screen_size[0], screen_size[1],
