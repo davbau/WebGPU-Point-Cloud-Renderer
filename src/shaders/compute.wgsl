@@ -18,7 +18,8 @@ struct Point {
 @group(0) @binding(2) var<storage, read_write> outputBuffer: array<atomic<u32>>;
 @group(0) @binding(3) var<storage, read_write> depthBuffer: array<atomic<u32>>; // I cannt use f32 for atomic operations. https://www.w3.org/TR/WGSL/#atomic-builtin-functions
 
-@compute @workgroup_size(1)
+@compute @workgroup_size(128, 1, 1)
+//@compute @workgroup_size(1)
 fn main(
     @builtin(global_invocation_id) gid: vec3<u32>,
     @builtin(workgroup_id) wid: vec3<u32>,

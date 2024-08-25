@@ -9,7 +9,11 @@ import {create_and_bind_quad_VertexBuffer, quad_vertex_array} from "./quad";
 const canvas = document.getElementById("gfx-main") as HTMLCanvasElement;
 const debug_div = document.getElementById("debug") as HTMLElement;
 
-const adapter = (await navigator.gpu.requestAdapter()) as GPUAdapter;
+const requestAdapterOptions = {
+    powerPreference: 'high-performance',
+} as GPURequestAdapterOptions;
+
+const adapter = (await navigator.gpu.requestAdapter(requestAdapterOptions)) as GPUAdapter;
 if (!adapter) {
     debug_div.innerText = "WebGPU is supported but no adapter found!";
     throw Error("Couldn't request WebGPU adapter.");
@@ -19,9 +23,9 @@ const k1Gigabyte = 1024 * 1024 * 1024;
 const device = (await adapter.requestDevice(
     {
         requiredLimits: {
-            // maxBufferSize: 2 * k1Gigabyte,
+            maxBufferSize: 1 * k1Gigabyte,
             // maxComputeWorkgroupStorageSize: 65536
-            // maxStorageBufferBindingSize: 2 * k1Gigabyte,
+            maxStorageBufferBindingSize: 1 * k1Gigabyte,
         },
     }
 )) as GPUDevice;
@@ -46,10 +50,14 @@ const arrayBufferHandler = fileDropHandler.getArrayBufferHandler();
 
 const gui = new GUI();
 // GUI parameters
-const params: { type: 'model' | 'cube' } = {
+const params: { type: 'model' | 'cube', copyType: 'direct' | 'staging_buffer', copyTiming: 'every_frame' | 'once' } = {
     type: 'model',
+    copyType: 'direct',
+    copyTiming: 'every_frame',
 };
 gui.add(params, 'type', ['model', 'cube']);
+gui.add(params, 'copyType', ['direct', 'staging_buffer']);
+gui.add(params, 'copyTiming', ['every_frame', 'once']);
 
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
@@ -176,7 +184,8 @@ function convertPointsToArrayBuffer(points: Point[]): ArrayBuffer {
 // const points = createRandomPoints(NUMBER_OF_POINTS);
 // const pointsArr = convertPointsToArrayBuffer(createDepthBufferTest(NUMBER_OF_POINTS));
 // const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(BUFFER_HANDLER_SIZE / 16));
-const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(1e5));
+// const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(1e7));
+const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(1e6));
 
 // const pointsArr = convertPointsToArrayBuffer(las_points_as_points);
 // const pointsArr = await lassLoader.loadLASPointsAsBuffer(file_path, las_header);
@@ -191,11 +200,12 @@ const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(1e5));
 // }
 let numberOfPoints = 0;
 
+const THREADS_PER_WORKGROUP = 128;
 function getPointsOverWorkgroups(numberOfPoints: number) {
     if (numberOfPoints == 0) {
         return 0;
     }
-    return numberOfPoints / Math.min(numberOfPoints, maxWorkgroupsPerDimension);
+    return (numberOfPoints) / Math.min(numberOfPoints, maxWorkgroupsPerDimension);
 }
 
 // console.log('points written to GPU: ', pointsArr);
@@ -290,6 +300,8 @@ import {BlenderCamera} from "./BlenderCamera";
 import {FileDropHandler} from "./FileDropHandler";
 import {ArrayBufferHandler} from "./ArrayBufferHandler";
 import {GUI} from "dat.gui";
+import {RenderStrategy} from "./render_strategies/RenderStrategy";
+import {CopyStrategy} from "./copy_strategies/CopyStrategy";
 
 const stats = new Stats();
 stats.showPanel(0);
@@ -302,14 +314,13 @@ mat4.rotate(modelMatrix, [0, 0, 1], 90 * Math.PI / 180, modelMatrix);
 mat4.rotate(modelMatrix, [0, 1, 0], 180 * Math.PI / 180, modelMatrix);
 // mat4.rotate(modelMatrix, [0, 1, 0], 90 * Math.PI / 180, modelMatrix);
 
-mat4.translate(modelMatrix, [-0.5, -0.5, 0.5], modelMatrix);
-
+mat4.translate(modelMatrix, [-0.5, -0.5, -0.5], modelMatrix);
 
 const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(0xFFFFFFFF);
 // unmap depth buffer
 depthBuffer.unmap();
 
-const writeToBufferDirectly = true;
+let writeToBufferDirectly = true;
 
 if (true) {
     console.log('cube')
@@ -322,6 +333,9 @@ if (true) {
         // 1e5 * SIZE_OF_POINT
     );
 }
+
+let renderStrategy: RenderStrategy;
+let copyStrategy: CopyStrategy;
 
 async function generateFrame() {
     stats.begin();
@@ -340,16 +354,18 @@ async function generateFrame() {
     mat4.multiply(camera.getViewProjectionMatrix(), modelMatrix, mVP);
     // mat4.multiply(camera.getViewProjectionMatrix(), mat4.identity(), mVP);
 
-    // debug_div.innerText = `Number of points: ${numberOfPoints}
-    // Number of workgroups: ${Math.min(numberOfPoints, maxWorkgroupsPerDimension)}, ${Math.ceil(getPointsOverWorkgroups(numberOfPoints))}
+    const xWorkGroups = Math.ceil(Math.min(numberOfPoints / THREADS_PER_WORKGROUP, maxWorkgroupsPerDimension));
+    const yWorkGroups = 1;
+    // const yWorkGroups = Math.ceil(getPointsOverWorkgroups(numberOfPoints));
+    const zWorkGroups = 1;
+    // const zWorkGroups = Math.ceil(getPointsOverWorkgroups(getPointsOverWorkgroups(numberOfPoints)));
+
+    debug_div.innerText = `Number of points: ${numberOfPoints}
+    Number of workgroups: ${xWorkGroups} x ${yWorkGroups} x ${zWorkGroups}
+    camera base: ${camera.sphericalCoordinate.centerInWorld.join(', ')}`;
     // Camera Matrix is \n${formatF32Array(camera.getViewMatrix())} \n
     // MVP Matrix is \n${formatF32Array(mVP)} \n
     // Model Matrix is \n${formatF32Array(modelMatrix)}`;
-
-    debug_div.innerText = `viewmatrix is \n \t ${formatF32Array(camera.getViewMatrix())} \n
-    view projection is \n \t ${formatF32Array(camera.getViewProjectionMatrix())} \n
-    transformation matrix is \n \t${formatF32Array(mVP)}\n
-    camera base: ${camera.sphericalCoordinate.centerInWorld.join(', ')}\n`;
 
     const uniform_data = new Float32Array([
         screen_size[0], screen_size[1],
@@ -361,6 +377,7 @@ async function generateFrame() {
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
     numberOfPoints = 0;
 
+    // /*
     for (let i = 0; i < arrayBufferHandler.numberOfBuffers(); i++) {
         const currentBuffer = arrayBufferHandler.getBuffer(i);
         let nr_pointsInCurrentBuffer = arrayBufferHandler.getBufferLength(i) / SIZE_OF_POINT;
@@ -370,6 +387,7 @@ async function generateFrame() {
         if (params.type === 'cube') {
             nr_pointsInCurrentBuffer = cubePointsArr.byteLength / SIZE_OF_POINT;
         } else {
+            writeToBufferDirectly = params.copyType === 'direct';
             if (writeToBufferDirectly) {
                 // Write to buffer directly.
                 device.queue.writeBuffer(
@@ -407,24 +425,25 @@ async function generateFrame() {
         const compute_depth_pass = commandEncoder.beginComputePass();
         compute_depth_pass.setPipeline(compute_depth_pipeline);
         compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup);
-        // computePass.dispatchWorkgroups(Math.min(batchSize, maxWorkgroupsPerDimension));
         compute_depth_pass.dispatchWorkgroups(
-            Math.max(1, Math.min(nr_pointsInCurrentBuffer, maxWorkgroupsPerDimension)),
-            Math.max(1, Math.min(Math.ceil(pointsInThisBufferOverWorkgroups), maxWorkgroupsPerDimension)),
-            1);
+            Math.max(1, xWorkGroups),
+            // Math.max(1, xWorkGroups),
+            Math.max(1, yWorkGroups),
+            Math.max(1, zWorkGroups));
         compute_depth_pass.end();
 
         // Compute
         const computePass = commandEncoder.beginComputePass();
         computePass.setPipeline(computePipeline);
         computePass.setBindGroup(0, compute_shader_bindGroup);
-        // computePass.dispatchWorkgroups(Math.min(batchSize, maxWorkgroupsPerDimension));
         computePass.dispatchWorkgroups(
-            Math.max(1, Math.min(nr_pointsInCurrentBuffer, maxWorkgroupsPerDimension)),
-            Math.max(1, Math.min(Math.ceil(pointsInThisBufferOverWorkgroups), maxWorkgroupsPerDimension)),
-            1);
+            Math.max(1, xWorkGroups),
+            // Math.max(1, xWorkGroups),
+            Math.max(1, yWorkGroups),
+            Math.max(1, zWorkGroups));
         computePass.end();
     }
+     // */
 
     // reset viewport
     (display_renderPassDescriptor.colorAttachments as GPURenderPassColorAttachment[])[0]

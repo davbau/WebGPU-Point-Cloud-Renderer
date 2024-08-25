@@ -77,4 +77,12 @@ export class ArrayBufferHandler {
     getBufferSize(): number {
         return this.initialBufferSize;
     }
+
+    getTotalBufferSize() {
+        return (this.numberOfBuffers() * (this.buffers.length - 1)) + this.writtenSizeOfLastBuffer;
+    }
+
+    getInitialBufferSize() {
+        return this.initialBufferSize;
+    }
 }
