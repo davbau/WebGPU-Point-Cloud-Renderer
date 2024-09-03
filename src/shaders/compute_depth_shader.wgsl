@@ -14,10 +14,12 @@ struct Point {
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> inputBuffer: array<Point>;
+//@group(0) @binding(1) var<uniform> inputBuffer: array<Point, 4096>;
 @group(0) @binding(2) var<storage, read_write> depthBuffer: array<atomic<u32>>; // I cannot use f32 for atomic operations. https://www.w3.org/TR/WGSL/#atomic-builtin-functions
 
-@compute @workgroup_size(128, 1, 1)
-//@compute @workgroup_size(1)
+//@compute @workgroup_size(32, 1, 1)
+@compute @workgroup_size(64, 1, 1)
+//@compute @workgroup_size(128, 1, 1)
 fn main(
     @builtin(global_invocation_id) gid: vec3<u32>,
     @builtin(workgroup_id) wid: vec3<u32>,

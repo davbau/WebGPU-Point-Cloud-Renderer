@@ -133,7 +133,8 @@ export class FileDropHandler {
             this.loadedFiles.push(file.name);
             const points = await this.lasLoader.loadLasPointsAsBuffer(file, header);
             console.log("got ", points, " points from ", file.name);
-            this.arrayBufferHandler.add(points);
+            this.arrayBufferHandler.addWithLoop(points).then(() => console.log("Added points to buffer"));
+            // this.arrayBufferHandler.add(points);
             // this.loadedArrayBuffers.push(points);
             // this.isArrayBufferClaimed.push(false);
         }

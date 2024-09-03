@@ -59,6 +59,34 @@ export class ArrayBufferHandler {
         }
     }
 
+    async addWithLoop(data: ArrayBuffer) {
+        console.log("Adding", data.byteLength, "bytes to buffers; =", data.byteLength / sizeOfPoints, "points");
+        let moreData = true
+        let startingIndex = 0;
+        const dataView = new Uint8Array(data);
+
+
+        while (startingIndex < data.byteLength) {
+            if (this.writtenSizeOfLastBuffer == this.initialBufferSize) {
+                this.buffers.push(new ArrayBuffer(this.initialBufferSize));
+                this.writtenSizeOfLastBuffer = 0;
+            }
+
+            const currentBuffer = this.buffers[this.buffers.length - 1];
+            const currentBufferView = new Uint8Array(currentBuffer);
+            const remainingSpace = this.initialBufferSize - this.writtenSizeOfLastBuffer;
+            const remainingData = dataView.slice(startingIndex, startingIndex + remainingSpace);
+
+            currentBufferView.set(remainingData, this.writtenSizeOfLastBuffer);
+            this.writtenSizeOfLastBuffer += remainingData.byteLength;
+            startingIndex += remainingData.byteLength;
+            console.log("Added", remainingData.byteLength, "bytes to current buffer. Starting index is now", startingIndex);
+
+            // sleep for 1s for testing
+            // await new Promise(resolve => setTimeout(resolve, 10));
+        }
+    }
+
     getBuffer(buffer_num: number) {
         return this.buffers[buffer_num];
     }
@@ -70,14 +98,17 @@ export class ArrayBufferHandler {
         return this.initialBufferSize;
     }
 
+    // The number of buffers in the handler
     numberOfBuffers(): number {
         return this.buffers.length;
     }
 
+    // The maximum size of one buffer
     getBufferSize(): number {
         return this.initialBufferSize;
     }
 
+    // The real used size of all buffers together
     getTotalBufferSize() {
         return (this.numberOfBuffers() * (this.buffers.length - 1)) + this.writtenSizeOfLastBuffer;
     }
