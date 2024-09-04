@@ -43,7 +43,8 @@ const maxStorageBufferBindingSize = device.limits.maxStorageBufferBindingSize;
 
 // Region Drag and Drop
 // const BUFFER_HANDLER_SIZE = 65536; // for uniform
-const BUFFER_HANDLER_SIZE = ((7.5e4)) * SIZE_OF_POINT; // for storage
+// const BUFFER_HANDLER_SIZE = ((7.5e4)) * SIZE_OF_POINT; // for storage
+const BUFFER_HANDLER_SIZE = ((1e5)) * SIZE_OF_POINT; // for storage
 
 // const THREADS_PER_WORKGROUP = 32;
 const THREADS_PER_WORKGROUP = 64;
@@ -52,7 +53,7 @@ const THREADS_PER_WORKGROUP = 64;
 // const BUFFER_HANDLER_SIZE = 1048560; // for uniform
 const container = document.getElementById("container") as HTMLDivElement;   // The container element
 const fileDropHandler = new FileDropHandler(container, BUFFER_HANDLER_SIZE);
-const arrayBufferHandler = fileDropHandler.getArrayBufferHandler();
+let arrayBufferHandler = fileDropHandler.getArrayBufferHandler();
 
 const gui = new GUI();
 // GUI parameters
@@ -222,20 +223,21 @@ const pointsBuffer = device.createBuffer({
     mappedAtCreation: false,
 });
 
-const multipleBuffer_BufferType = GPUBufferUsage.STORAGE;
-const multiple_Buffer = [
+const multipleBuffer_BufferType = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
+// const multipleBuffer_BufferType = GPUBufferUsage.STORAGE | GPUBufferUsage.MAP_WRITE;
+let multiple_Buffer = [
     device.createBuffer(
         {
             label: "points buffer 1",
             size: arrayBufferHandler.getBufferSize(),
-            usage: multipleBuffer_BufferType | GPUBufferUsage.COPY_DST,
+            usage: multipleBuffer_BufferType,
             mappedAtCreation: false,
         }),
     device.createBuffer(
         {
             label: "points buffer 2",
             size: arrayBufferHandler.getBufferSize(),
-            usage: multipleBuffer_BufferType | GPUBufferUsage.COPY_DST,
+            usage: multipleBuffer_BufferType,
             mappedAtCreation: false,
         }),
     // device.createBuffer({
@@ -245,7 +247,7 @@ const multiple_Buffer = [
     //     }
     // )
 ];
-let usedBuffer = 0;
+let currentUsedBufferIndex = 0;
 // console.log(points);
 // new Float32Array(pointsBuffer.getMappedRange()).set(new Float32Array(arrayBufferHandler.getBufferSize() - 1));
 // pointsBuffer.unmap();
@@ -268,11 +270,11 @@ const uniformBuffer = device.createBuffer({
 // Region BindGroup
 const compute_depth_shader_bindGroupLayout = compute_depth_pipeline.getBindGroupLayout(0);
 compute_depth_shader_bindGroupLayout.label = "compute depth pipeline layout";
-// let compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [uniformBuffer, multiple_Buffer[usedBuffer], depthBuffer]);
+// let compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [uniformBuffer, multiple_Buffer[currentUsedBufferIndex], depthBuffer]);
 
 const compute_shader_bindGroupLayout = computePipeline.getBindGroupLayout(0);
 compute_shader_bindGroupLayout.label = "compute pipeline layout";
-// let compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [uniformBuffer, multiple_Buffer[usedBuffer], framebuffer, depthBuffer]);
+// let compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [uniformBuffer, multiple_Buffer[currentUsedBufferIndex], framebuffer, depthBuffer]);
 
 const display_pipelineLayout = displayPipeline.getBindGroupLayout(0);
 display_pipelineLayout.label = "display pipeline layout";
@@ -355,6 +357,19 @@ const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(
 // unmap depth buffer
 depthBuffer.unmap();
 
+async function copyPointsToGPU(buffer: GPUBuffer, points: ArrayBuffer): Promise<number> {
+    const commandEncoder = device.createCommandEncoder();
+    device.queue.writeBuffer(
+        buffer,
+        0,
+        points,
+        0,
+        points.byteLength
+    );
+    device.queue.submit([commandEncoder.finish()]);
+    return 0;
+}
+
 async function generateFrame() {
     stats.begin();
 
@@ -374,14 +389,32 @@ async function generateFrame() {
 
     framebuffer.unmap();    // unmap framebuffer
 
+    currentUsedBufferIndex = 0;
+    let nextUsedBufferIndex = (currentUsedBufferIndex + 1) % multiple_Buffer.length;
+    const promises = [];
+
+    // Iteration 0 we copy buffer 0 and 1.
+    if (arrayBufferHandler.numberOfBuffers() > 1) {
+        promises[currentUsedBufferIndex] = copyPointsToGPU(multiple_Buffer[0], arrayBufferHandler.getBuffer(0));
+        promises[currentUsedBufferIndex + 1] = copyPointsToGPU(multiple_Buffer[1], arrayBufferHandler.getBuffer(1));
+    }
+
     // Region Copy
     for (let i = 0; i < arrayBufferHandler.numberOfBuffers(); i++) {
-        const currentBuffer = multiple_Buffer[usedBuffer];
-        // debug helper
-        if (arrayBufferHandler.numberOfBuffers() >= 10) {
+        // const currentBuffer = multiple_Buffer[currentUsedBufferIndex];
+
+        if (i != 0 && i != arrayBufferHandler.numberOfBuffers()) {
+            // Iteration 1 we copy buffer 2, 1 is already copied.
+            promises[nextUsedBufferIndex] = copyPointsToGPU(multiple_Buffer[nextUsedBufferIndex], arrayBufferHandler.getBuffer(i + 1));
         }
 
         let nr_pointsInCurrentBuffer = arrayBufferHandler.getBufferLength(i) / SIZE_OF_POINT;
+        // debug helper
+        if (arrayBufferHandler.numberOfBuffers() >= 10) {
+            let a = 0;
+        }
+
+        /*
         if (params.copyType === 'staging_buffer') {
             await stagingBuffer.mapAsync(GPUMapMode.WRITE).then(() => {
                 let data = new Float32Array(stagingBuffer.getMappedRange());
@@ -407,6 +440,7 @@ async function generateFrame() {
                 nr_pointsInCurrentBuffer * SIZE_OF_POINT
             );
         }
+         */
 
         // Region Workgroups
         const totalWorkGroups = Math.ceil(nr_pointsInCurrentBuffer / THREADS_PER_WORKGROUP);
@@ -424,8 +458,10 @@ async function generateFrame() {
         // Region BindGroup
         // compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [uniformBuffer, currentBuffer, depthBuffer]);
         // compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [uniformBuffer, currentBuffer, framebuffer, depthBuffer]);
-        const current_compute_depth_shader_bindGroup = multiple_depth_shader_bindGroups[usedBuffer];
-        const current_compute_shader_bindGroup = multiple_compute_shader_bindGroups[usedBuffer];
+        await promises[currentUsedBufferIndex];
+        const current_compute_depth_shader_bindGroup = multiple_depth_shader_bindGroups[currentUsedBufferIndex];
+        const current_compute_shader_bindGroup = multiple_compute_shader_bindGroups[currentUsedBufferIndex];
+
 
         // Region Compute Depth Pass
         const compute_depth_pass = commandEncoder.beginComputePass();
@@ -455,7 +491,8 @@ async function generateFrame() {
         numberOfPoints += nr_pointsInCurrentBuffer;
 
         // switch buffer
-        usedBuffer = (usedBuffer + 1) % multiple_Buffer.length;
+        currentUsedBufferIndex = (currentUsedBufferIndex + 1) % multiple_Buffer.length;
+        nextUsedBufferIndex = (currentUsedBufferIndex + 1) % multiple_Buffer.length;
 
         debug_div.innerText = `Number of points: ${numberOfPoints}
         Number of points per buffer: ${arrayBufferHandler.getBufferLength(0) / SIZE_OF_POINT},

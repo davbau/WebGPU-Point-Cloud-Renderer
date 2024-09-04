@@ -24,6 +24,9 @@ export class FileDropHandler {
     getArrayBufferHandler() {
         return this.arrayBufferHandler;
     }
+    setArrayBufferHandler(arrayBufferHandler: ArrayBufferHandler) {
+        this.arrayBufferHandler = arrayBufferHandler;
+    }
 
     init() {
         this.container.ondrop = (ev) => {
