@@ -4,10 +4,10 @@ import Camera from "./camera";
 import {Util} from "./util";
 import {create_and_bind_quad_VertexBuffer, quad_vertex_array} from "./quad";
 
-// End Region Drag and Drop
-
 const canvas = document.getElementById("gfx-main") as HTMLCanvasElement;
 const debug_div = document.getElementById("debug") as HTMLElement;
+
+const screen_size = vec2.create(canvas.width, canvas.height);
 
 const requestAdapterOptions = {
     powerPreference: 'high-performance',
@@ -27,6 +27,7 @@ const device = (await adapter.requestDevice(
             // maxComputeWorkgroupStorageSize: 65536
             maxStorageBufferBindingSize: 1 * k1Gigabyte,
         },
+        requiredFeatures: ['timestamp-query'],
     }
 )) as GPUDevice;
 console.log('Device: ', device);
@@ -44,7 +45,7 @@ const maxStorageBufferBindingSize = device.limits.maxStorageBufferBindingSize;
 // Region Drag and Drop
 // const BUFFER_HANDLER_SIZE = 65536; // for uniform
 // const BUFFER_HANDLER_SIZE = ((7.5e4)) * SIZE_OF_POINT; // for storage
-const BUFFER_HANDLER_SIZE = ((1e5)) * SIZE_OF_POINT; // for storage
+const BUFFER_HANDLER_SIZE = ((1e6)) * SIZE_OF_POINT; // for storage
 
 // const THREADS_PER_WORKGROUP = 32;
 const THREADS_PER_WORKGROUP = 64;
@@ -52,9 +53,10 @@ const THREADS_PER_WORKGROUP = 64;
 
 // const BUFFER_HANDLER_SIZE = 1048560; // for uniform
 const container = document.getElementById("container") as HTMLDivElement;   // The container element
-const fileDropHandler = new FileDropHandler(container, BUFFER_HANDLER_SIZE);
+const fileDropHandler = new FileDropHandler(container, device, screen_size, BUFFER_HANDLER_SIZE);
 let arrayBufferHandler = fileDropHandler.getArrayBufferHandler();
 
+// Region GUI
 const gui = new GUI();
 // GUI parameters
 const params: { type: 'model' | 'cube', copyType: 'direct' | 'staging_buffer', copyTiming: 'every_frame' | 'once' } = {
@@ -70,7 +72,8 @@ gui.add(params, 'copyTiming', ['every_frame', 'once']);
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
 
 // Region pipeline
-import compute_shader from "./shaders/compute.wgsl";
+// import compute_shader from "./shaders/compute.wgsl";
+import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
 
 const computeShaderModule = device.createShaderModule({
     label: "compute shader module",
@@ -86,7 +89,8 @@ const computePipeline = device.createComputePipeline({
 });
 
 
-import compute_depth_shader from "./shaders/compute_depth_shader.wgsl";
+// import compute_depth_shader from "./shaders/compute_depth_shader.wgsl";
+import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
 
 const compute_depth_shaderModule = device.createShaderModule({
     label: "compute depth shader module",
@@ -215,6 +219,7 @@ function getPointsOverWorkgroups(numberOfPoints: number) {
     return (numberOfPoints) / Math.min(numberOfPoints, maxWorkgroupsPerDimension);
 }
 
+/*
 // console.log('points written to GPU: ', pointsArr);
 const pointsBuffer = device.createBuffer({
     label: "points buffer",
@@ -247,6 +252,7 @@ let multiple_Buffer = [
     //     }
     // )
 ];
+ */
 let currentUsedBufferIndex = 0;
 // console.log(points);
 // new Float32Array(pointsBuffer.getMappedRange()).set(new Float32Array(arrayBufferHandler.getBufferSize() - 1));
@@ -261,11 +267,23 @@ const stagingBuffer = device.createBuffer({
 });
 
 // Region Uniform
+// const uniformBuffer = device.createBuffer({
+//     label: "uniform buffer",
+//     size: 4 * Float32Array.BYTES_PER_ELEMENT + 16 * Float32Array.BYTES_PER_ELEMENT,
+//     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+// });
+
+// new:
 const uniformBuffer = device.createBuffer({
     label: "uniform buffer",
-    size: 4 * Float32Array.BYTES_PER_ELEMENT + 16 * Float32Array.BYTES_PER_ELEMENT,
+    size: 4 * Float32Array.BYTES_PER_ELEMENT    // canvas width, height, 2x padding
+        + 16 * Float32Array.BYTES_PER_ELEMENT   // mVP
+        + 4 * Float32Array.BYTES_PER_ELEMENT    // Batch origin
+        + 4 * Float32Array.BYTES_PER_ELEMENT    // Batch size
+        + 4 * Float32Array.BYTES_PER_ELEMENT,   // render type
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 });
+
 
 // Region BindGroup
 const compute_depth_shader_bindGroupLayout = compute_depth_pipeline.getBindGroupLayout(0);
@@ -297,12 +315,12 @@ const display_shader_bindGroup = device.createBindGroup({
     ]
 });
 
-const multiple_depth_shader_bindGroups = multiple_Buffer.map((buffer) => {
-    return Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [uniformBuffer, buffer, depthBuffer]);
-});
-const multiple_compute_shader_bindGroups = multiple_Buffer.map((buffer) => {
-    return Util.createBindGroup(device, compute_shader_bindGroupLayout, [uniformBuffer, buffer, framebuffer, depthBuffer]);
-});
+// const multiple_depth_shader_bindGroups = multiple_Buffer.map((buffer) => {
+//     return Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [uniformBuffer, buffer, depthBuffer]);
+// });
+// const multiple_compute_shader_bindGroups = multiple_Buffer.map((buffer) => {
+//     return Util.createBindGroup(device, compute_shader_bindGroupLayout, [uniformBuffer, buffer, framebuffer, depthBuffer]);
+// });
 
 // Region RenderPassDescriptor
 const display_renderPassDescriptor = Util.create_display_RenderPassDescriptor(context, [0, 0, 0, 1]);
@@ -326,7 +344,6 @@ inputHandler.registerInputHandlers();
 
 const modelMatrix = mat4.identity();
 const mVP = mat4.create();
-const screen_size = vec2.create(canvas.width, canvas.height);
 
 import Stats from "stats.js";
 import {FPSCamera} from "./FPSCamera";
@@ -337,6 +354,7 @@ import {BlenderCamera} from "./BlenderCamera";
 import {FileDropHandler} from "./FileDropHandler";
 import {ArrayBufferHandler} from "./ArrayBufferHandler";
 import {GUI} from "dat.gui";
+import {BatchHandler} from "./BatchHandler";
 // import {RenderStrategy} from "./render_strategies/RenderStrategy";
 // import {CopyStrategy} from "./copy_strategies/CopyStrategy";
 
@@ -357,19 +375,7 @@ const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(
 // unmap depth buffer
 depthBuffer.unmap();
 
-async function copyPointsToGPU(buffer: GPUBuffer, points: ArrayBuffer): Promise<number> {
-    const commandEncoder = device.createCommandEncoder();
-    device.queue.writeBuffer(
-        buffer,
-        0,
-        points,
-        0,
-        points.byteLength
-    );
-    device.queue.submit([commandEncoder.finish()]);
-    return 0;
-}
-
+/*
 async function generateFrame() {
     stats.begin();
 
@@ -390,23 +396,10 @@ async function generateFrame() {
     framebuffer.unmap();    // unmap framebuffer
 
     currentUsedBufferIndex = 0;
-    let nextUsedBufferIndex = (currentUsedBufferIndex + 1) % multiple_Buffer.length;
-    const promises = [];
-
-    // Iteration 0 we copy buffer 0 and 1.
-    if (arrayBufferHandler.numberOfBuffers() > 1) {
-        promises[currentUsedBufferIndex] = copyPointsToGPU(multiple_Buffer[0], arrayBufferHandler.getBuffer(0));
-        promises[currentUsedBufferIndex + 1] = copyPointsToGPU(multiple_Buffer[1], arrayBufferHandler.getBuffer(1));
-    }
 
     // Region Copy
     for (let i = 0; i < arrayBufferHandler.numberOfBuffers(); i++) {
         // const currentBuffer = multiple_Buffer[currentUsedBufferIndex];
-
-        if (i != 0 && i != arrayBufferHandler.numberOfBuffers()) {
-            // Iteration 1 we copy buffer 2, 1 is already copied.
-            promises[nextUsedBufferIndex] = copyPointsToGPU(multiple_Buffer[nextUsedBufferIndex], arrayBufferHandler.getBuffer(i + 1));
-        }
 
         let nr_pointsInCurrentBuffer = arrayBufferHandler.getBufferLength(i) / SIZE_OF_POINT;
         // debug helper
@@ -414,7 +407,6 @@ async function generateFrame() {
             let a = 0;
         }
 
-        /*
         if (params.copyType === 'staging_buffer') {
             await stagingBuffer.mapAsync(GPUMapMode.WRITE).then(() => {
                 let data = new Float32Array(stagingBuffer.getMappedRange());
@@ -440,7 +432,6 @@ async function generateFrame() {
                 nr_pointsInCurrentBuffer * SIZE_OF_POINT
             );
         }
-         */
 
         // Region Workgroups
         const totalWorkGroups = Math.ceil(nr_pointsInCurrentBuffer / THREADS_PER_WORKGROUP);
@@ -456,12 +447,10 @@ async function generateFrame() {
         }
 
         // Region BindGroup
-        // compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [uniformBuffer, currentBuffer, depthBuffer]);
-        // compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [uniformBuffer, currentBuffer, framebuffer, depthBuffer]);
-        await promises[currentUsedBufferIndex];
-        const current_compute_depth_shader_bindGroup = multiple_depth_shader_bindGroups[currentUsedBufferIndex];
-        const current_compute_shader_bindGroup = multiple_compute_shader_bindGroups[currentUsedBufferIndex];
-
+        compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [uniformBuffer, currentBuffer, depthBuffer]);
+        compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [uniformBuffer, currentBuffer, framebuffer, depthBuffer]);
+        // const current_compute_depth_shader_bindGroup = multiple_depth_shader_bindGroups[currentUsedBufferIndex];
+        // const current_compute_shader_bindGroup = multiple_compute_shader_bindGroups[currentUsedBufferIndex];
 
         // Region Compute Depth Pass
         const compute_depth_pass = commandEncoder.beginComputePass();
@@ -492,7 +481,6 @@ async function generateFrame() {
 
         // switch buffer
         currentUsedBufferIndex = (currentUsedBufferIndex + 1) % multiple_Buffer.length;
-        nextUsedBufferIndex = (currentUsedBufferIndex + 1) % multiple_Buffer.length;
 
         debug_div.innerText = `Number of points: ${numberOfPoints}
         Number of points per buffer: ${arrayBufferHandler.getBufferLength(0) / SIZE_OF_POINT},
@@ -525,8 +513,148 @@ async function generateFrame() {
 
     requestAnimationFrame(generateFrame);
 }
+ */
 
 requestAnimationFrame(generateFrame);
+const batchHandler = arrayBufferHandler as BatchHandler;
+
+async function generateFrame() {
+    stats.begin();
+
+    let commandEncoder = device.createCommandEncoder();
+
+    // Region Uniform
+    mat4.multiply(camera.getViewProjectionMatrix(), modelMatrix, mVP);
+
+    // const uniform_data = new Float32Array([
+    //     screen_size[0], screen_size[1],
+    //     0, 0, // padding
+    //     ...mVP
+    // ]);
+    // device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
+
+    device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
+
+    framebuffer.unmap();    // unmap framebuffer
+    await batchHandler.writeOneBufferToGPU();
+
+    let numberOfPoints = 0;
+    let compute_depth_shader_bindGroup: GPUBindGroup;
+    let compute_shader_bindGroup: GPUBindGroup;
+
+    for (const batch of batchHandler.getBatches()) {
+        if (!batch.isWrittenToGPU()) {
+            continue;
+        }
+
+        // const origin = new Float32Array(batch.getOrigin());
+        // const boxSize = new Float32Array(batch.getBoxSize());
+
+        const uniform_data = new Float32Array([
+            screen_size[0], screen_size[1],
+            0, 0, // padding
+            ...mVP,
+            ...batch.getOrigin(), 0,
+            ...batch.getBoxSize(), 0,
+            0, 0, 0, 0, // TODO: implement render type
+        ]);
+
+        // console.log("screen size: ", screen_size[0], screen_size[1]);
+        // console.log("mVP: ", formatF32Array(mVP));
+        // console.log("origin: ", ((batch.getOrigin())));
+        // console.log("box size: ", ((batch.getBoxSize())));
+        // console.log("uniform buffer: ", uniform_data, "with length: ", uniform_data.length);
+        device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
+
+        // Region Workgroups
+        const totalWorkGroups = Math.ceil(batch.getAmountOfFilledPoints() / THREADS_PER_WORKGROUP);
+        let xWorkGroups = 1;
+        let yWorkGroups = 1;
+        let zWorkGroups = 1;
+
+        if (totalWorkGroups <= device.limits.maxComputeWorkgroupsPerDimension) {
+            xWorkGroups = totalWorkGroups;
+        } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 2)) {
+            yWorkGroups = Math.ceil(totalWorkGroups / device.limits.maxComputeWorkgroupsPerDimension);
+            xWorkGroups = Math.ceil(totalWorkGroups / yWorkGroups);
+        }
+
+        // Region BindGroup
+        compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [
+            uniformBuffer,
+            depthBuffer,
+            batch.getCoarseGPUBuffer(),
+            batch.getMediumGPUBuffer(),
+            batch.getFineGPUBuffer(),
+            // batch.getColorGPUBuffer(),
+        ]);
+
+        compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [
+            uniformBuffer,
+            depthBuffer,
+            framebuffer,
+            batch.getCoarseGPUBuffer(),
+            batch.getMediumGPUBuffer(),
+            batch.getFineGPUBuffer(),
+            batch.getColorGPUBuffer(),
+        ]);
+
+        // Region Compute Depth Pass
+        const compute_depth_pass = commandEncoder.beginComputePass();
+        compute_depth_pass.setPipeline(compute_depth_pipeline);
+        compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup);
+        compute_depth_pass.dispatchWorkgroups(
+            Math.max(1, xWorkGroups),
+            Math.max(1, yWorkGroups),
+            Math.max(1, zWorkGroups));
+        compute_depth_pass.end();
+
+        // Region Compute Pass
+        const computePass = commandEncoder.beginComputePass();
+        computePass.setPipeline(computePipeline);
+        computePass.setBindGroup(0, compute_shader_bindGroup);
+        computePass.dispatchWorkgroups(
+            Math.max(1, xWorkGroups),
+            Math.max(1, yWorkGroups),
+            Math.max(1, zWorkGroups));
+        computePass.end();
+
+        device.queue.submit([commandEncoder.finish()]);
+        commandEncoder = device.createCommandEncoder();
+
+        numberOfPoints += batch.getAmountOfFilledPoints();
+
+        debug_div.innerText = `Number of points: ${numberOfPoints}
+        Number of points per buffer: ${batch.getBatchSize()},
+        Number of buffers: ${arrayBufferHandler.numberOfBuffers()},
+        TpW: ${THREADS_PER_WORKGROUP},
+        Workgroups: ${xWorkGroups} x ${yWorkGroups} x ${zWorkGroups},
+        `;
+    }
+
+    // Region Display Pass
+    // reset viewport
+    (display_renderPassDescriptor.colorAttachments as GPURenderPassColorAttachment[])[0]
+        .view = context.getCurrentTexture().createView();
+
+    const displayPass = commandEncoder.beginRenderPass(display_renderPassDescriptor);
+    displayPass.setPipeline(displayPipeline);
+    displayPass.setBindGroup(0, display_shader_bindGroup);
+    displayPass.setVertexBuffer(0, quad_vertexBuffer);
+    displayPass.draw(4, 1, 0, 0);
+    displayPass.end();
+
+    // unmap framebuffer
+    commandEncoder.clearBuffer(framebuffer, 0, framebuffer.size);
+    framebuffer.unmap();
+
+    device.queue.submit([commandEncoder.finish()]); // submit
+    numberOfPoints = 0;
+
+    stats.end();
+
+    requestAnimationFrame(generateFrame);
+}
 
 function formatF32Array(float32Array: Float32Array): string {
     const helper = mat4.transpose(float32Array);

@@ -14,10 +14,12 @@ struct Point {
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> inputBuffer: array<Point>;
-//@group(0) @binding(1) var<uniform> inputBuffer: array<Point, 4096>;
-//@group(0) @binding(2) var<storage, read_write> outputBuffer: array<vec4<f32>>;
-@group(0) @binding(2) var<storage, read_write> outputBuffer: array<atomic<u32>>;
-@group(0) @binding(3) var<storage, read_write> depthBuffer: array<atomic<u32>>; // I cannt use f32 for atomic operations. https://www.w3.org/TR/WGSL/#atomic-builtin-functions
+@group(0) @binding(2) var<storage, read_write> depthBuffer: array<atomic<u32>>;
+
+@group(0) @binding(3) var<storage, read> courseBuffer: array<Point>;
+@group(0) @binding(4) var<storage, read> mediumBuffer: array<Point>;
+@group(0) @binding(5) var<storage, read> fineBuffer: array<Point>;
+@group(0) @binding(6) var<storage, read> colorBuffer: array<Point>;
 
 //@compute @workgroup_size(32, 1, 1)
 @compute @workgroup_size(64, 1, 1)

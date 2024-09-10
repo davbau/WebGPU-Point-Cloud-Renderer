@@ -1,7 +1,9 @@
+import {DataHandler} from "./BatchHandler";
+
 const sizeOfPoints = 4 * Float32Array.BYTES_PER_ELEMENT;
 
 // ArrayList like implementation for ArrayBuffer
-export class ArrayBufferHandler {
+export class ArrayBufferHandler extends DataHandler {
     private buffers: ArrayBuffer[];
     /**
      * The size of the last buffer in the buffers array. This is needed because the last buffer may not be full.
@@ -17,6 +19,7 @@ export class ArrayBufferHandler {
     private initialBufferSize: number;
 
     constructor(bufferSize: number) {
+        super();
         this.buffers = [];
         this.buffers.push(new ArrayBuffer(bufferSize));
         this.writtenSizeOfLastBuffer = 0;
