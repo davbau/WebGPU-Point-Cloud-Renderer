@@ -1,5 +1,6 @@
 import {mat4, vec2, vec3, vec4} from "webgpu-matrix";
 import {u_int32} from "./types/c_equivalents";
+import assert from "node:assert";
 
 type UniformType = {
     // origin of the bounding box, will be padded to vec4 = 16 bytes
@@ -45,6 +46,12 @@ export class Batch {
     private _screenSize: vec2.default;
 
     /**
+     * The id of the batch.
+     * @private
+     */
+    private _id: number;
+
+    /**
      * The GPU buffer containing the vertices of the batch.
      * The course buffer contains the 10 most significant bits of x, y and z as distances from the bounding box origin.
      * @private
@@ -59,6 +66,7 @@ export class Batch {
     private hostBuffer_fine?: Uint32Array;
     private hostBuffer_color?: Uint32Array;
     private buffersReadyToWrite: boolean;
+    private buffersInFlight: boolean;
     private buffersWrittenToGPU: boolean;
 
     private _device: GPUDevice;
@@ -66,19 +74,21 @@ export class Batch {
     constructor(
         device: GPUDevice,
         bufferSize: number,
-        screenSize: vec2.default
+        screenSize: vec2.default,
+        id: number
     ) {
         console.log("Creating new batch with size", bufferSize);
+        this._id = id;
         this._device = device;
         this._bufferSize = bufferSize;
         this._screenSize = screenSize
 
         this.batchSize = bufferSize / 16;
 
-        this.gpuBuffer_coarse = this.makeGPUBuffer(this.batchSize);
-        this.gpuBuffer_medium = this.makeGPUBuffer(this.batchSize);
-        this.gpuBuffer_fine = this.makeGPUBuffer(this.batchSize);
-        this.gpuBuffer_color = this.makeGPUBuffer(this.batchSize);
+        this.gpuBuffer_coarse = this.makeGPUBuffer(this.batchSize, "coarse");
+        this.gpuBuffer_medium = this.makeGPUBuffer(this.batchSize, "medium");
+        this.gpuBuffer_fine = this.makeGPUBuffer(this.batchSize, "fine");
+        this.gpuBuffer_color = this.makeGPUBuffer(this.batchSize, "color");
 
         this.hostBuffer_coarse = new Uint32Array(this.batchSize);
         this.hostBuffer_medium = new Uint32Array(this.batchSize);
@@ -86,6 +96,7 @@ export class Batch {
         this.hostBuffer_color = new Uint32Array(this.batchSize);
 
         this.buffersReadyToWrite = false;
+        this.buffersInFlight = false;
         this.buffersWrittenToGPU = false;
 
         this._boundingBox = [0, 0, 0, 0, 0, 0];
@@ -93,10 +104,11 @@ export class Batch {
         this._filledSize = 0;
     }
 
-    private makeGPUBuffer(size: number) {
+    private makeGPUBuffer(size: number, label: string) {
         return this._device.createBuffer({
+            label: label,
             size: size * Uint32Array.BYTES_PER_ELEMENT,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
     }
 
@@ -186,16 +198,34 @@ export class Batch {
         return;
     }
 
-    writeDataToGPUBuffer() {
-        if (this.buffersReadyToWrite) {
-            console.log("Writing data to GPU buffer...");
+    async writeDataToGPUBuffer() {
+        if (this.buffersReadyToWrite && !this.buffersInFlight) {
+            console.log("Writing data to GPU buffer for Batch: ", this._id);
             this._device.queue.writeBuffer(this.gpuBuffer_coarse, 0, this.hostBuffer_coarse!);
             this._device.queue.writeBuffer(this.gpuBuffer_medium, 0, this.hostBuffer_medium!);
             this._device.queue.writeBuffer(this.gpuBuffer_fine, 0, this.hostBuffer_fine!);
             this._device.queue.writeBuffer(this.gpuBuffer_color, 0, this.hostBuffer_color!);
+            this.buffersInFlight = true;
 
+            /*
+            await this._device.queue.onSubmittedWorkDone();
             this.buffersReadyToWrite = false;
             this.buffersWrittenToGPU = true;
+            this.buffersInFlight = false;
+            console.log("Finished writing data to GPU buffer for Batch: ", this._id);
+            */
+
+            // /*
+            this._device.queue.onSubmittedWorkDone().then(() => {
+                // finished writing to GPU
+                this.buffersReadyToWrite = false;
+                this.buffersWrittenToGPU = true;
+                this.buffersInFlight = false;
+                console.log(`Finished writing ${this.gpuBuffer_coarse.size * 4} bytes of data to GPU buffer for Batch: `, this._id);
+            }).catch((error) => {
+                console.error("Error writing data to GPU buffer for Batch: ", this._id, error);
+            });
+            // */
         }
     }
 
@@ -244,6 +274,12 @@ export class Batch {
         delete this.hostBuffer_color;
     }
 
+    /**
+     * Find the bounding box of the batch. The bounding box is an array of 6 numbers: [minX, minY, minZ, maxX, maxY, maxZ].
+     * @param data The data to find the bounding box of.
+     * @param numPointsToLoad The number of points to load.
+     * @private
+     */
     private async findBoundingBox(data: ArrayBuffer, numPointsToLoad: number): Promise<void> {
         const dataView = new DataView(data);
         for (let i = 0; i < numPointsToLoad; i++) {
@@ -258,6 +294,10 @@ export class Batch {
             if (this._boundingBox[3] < x) this._boundingBox[3] = x;
             if (this._boundingBox[4] < y) this._boundingBox[4] = y;
             if (this._boundingBox[5] < z) this._boundingBox[5] = z;
+        }
+
+        if (this._boundingBox[0] > this._boundingBox[3] || this._boundingBox[1] > this._boundingBox[4] || this._boundingBox[2] > this._boundingBox[5]) {
+            console.error("Bounding box is invalid: ", this._boundingBox);
         }
 
         this._size = [
@@ -359,7 +399,7 @@ export class Batch {
     }
 
     canBeWrittenToGPU() {
-        return this.buffersReadyToWrite;
+        return this.buffersReadyToWrite && !this.buffersInFlight;
     }
 
     isWrittenToGPU() {

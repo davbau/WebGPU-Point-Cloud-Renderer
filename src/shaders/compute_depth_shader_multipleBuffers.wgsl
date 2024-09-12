@@ -23,76 +23,76 @@ struct Point {
     color: u32,
 };
 
-        const factor = 4294967296.0; // 2^32
+const factor = 4294967296.0; // 2^32
 
-        @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-        @group(0) @binding(1) var<storage, read_write> depthBuffer: array<atomic<u32>>;
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<storage, read_write> depthBuffer: array<atomic<u32>>;
 
-        @group(0) @binding(2) var<storage, read> courseBuffer: array<u32>;
-        @group(0) @binding(3) var<storage, read> mediumBuffer: array<u32>;
-        @group(0) @binding(4) var<storage, read> fineBuffer: array<u32>;
-        //@group(0) @binding(5) var<storage, read> colorBuffer: array<u32>;
+@group(0) @binding(2) var<storage, read> courseBuffer: array<u32>;
+@group(0) @binding(3) var<storage, read> mediumBuffer: array<u32>;
+@group(0) @binding(4) var<storage, read> fineBuffer: array<u32>;
+//@group(0) @binding(5) var<storage, read> colorBuffer: array<u32>;
 
-        @compute @workgroup_size(64, 1, 1)
-        fn main(
-            @builtin(global_invocation_id) gid: vec3<u32>,
-            @builtin(workgroup_id) wid: vec3<u32>,
-            @builtin(num_workgroups) num_wg: vec3<u32>
-        ) {
-            let pointIndex = gid.x;
-            var p = vec3<u32>(0, 0, 0);
-            if (uniforms.renderMode == 0u) {
-                p = coarse(pointIndex);
-            } else if (uniforms.renderMode == 1u) {
-                p = medium(pointIndex);
-            } else {
-                p = fine(pointIndex);
-            }
+@compute @workgroup_size(64, 1, 1)
+fn main(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(workgroup_id) wid: vec3<u32>,
+    @builtin(num_workgroups) num_wg: vec3<u32>
+) {
+    let pointIndex = gid.x;
+    var p = vec3<u32>(0, 0, 0);
+    if (uniforms.renderMode == 0u) {
+        p = coarse(pointIndex);
+    } else if (uniforms.renderMode == 1u) {
+        p = medium(pointIndex);
+    } else {
+        p = fine(pointIndex);
+    }
 
-            let X = f32(p.x) * uniforms.size.x / factor + uniforms.origin.x;
-            let Y = f32(p.y) * uniforms.size.y / factor + uniforms.origin.y;
-            let Z = f32(p.z) * uniforms.size.z / factor + uniforms.origin.z;
+    let X = f32(p.x) * (uniforms.size.x / factor) + uniforms.origin.x;
+    let Y = f32(p.y) * (uniforms.size.y / factor) + uniforms.origin.y;
+    let Z = f32(p.z) * (uniforms.size.z / factor) + uniforms.origin.z;
 
-        //    let color = colorBuffer[pointIndex].color;
+//    let color = colorBuffer[pointIndex].color;
 
-            let pos = uniforms.mvp * vec4<f32>(X, Y, Z, 1.0);
-            let ndc = pos / pos.w;
+    let pos = uniforms.mvp * vec4<f32>(X, Y, Z, 1.0);
+    let ndc = pos / pos.w;
 
-            // Discard
-            if (ndc.w < 0.0) {
-                return;
-            }
+    // Discard
+    if (ndc.w < 0.0) {
+        return;
+    }
 
-            // Convert ndc to screen space coordinates
-            let screen_x = (ndc.x * 0.5 + 0.5) * uniforms.canvas_size.x;
-            let screen_y = (ndc.y * 0.5 + 0.5) * uniforms.canvas_size.y;
+    // Convert ndc to screen space coordinates
+    let screen_x = (ndc.x * 0.5 + 0.5) * uniforms.canvas_size.x;
+    let screen_y = (ndc.y * 0.5 + 0.5) * uniforms.canvas_size.y;
 
-            // Discard
-            if (screen_x < 0.0 || screen_x >= uniforms.canvas_size.x) {
-                return;
-            }
-            if (screen_y < 0.0 || screen_y >= uniforms.canvas_size.y) {
-                return;
-            }
+    // Discard
+    if (screen_x < 0.0 || screen_x >= uniforms.canvas_size.x) {
+        return;
+    }
+    if (screen_y < 0.0 || screen_y >= uniforms.canvas_size.y) {
+        return;
+    }
 
-            // Calculate the index into the output buffer using the canvas size
-            let index = u32(screen_y) * u32(uniforms.canvas_size.x) + u32(screen_x);
+    // Calculate the index into the output buffer using the canvas size
+    let index = u32(screen_y) * u32(uniforms.canvas_size.x) + u32(screen_x);
 
-            // compute depth
-            let uint_depth = bitcast<u32>(ndc.w);
-            atomicMin(&depthBuffer[index], uint_depth);
-        }
+    // compute depth
+    let uint_depth = bitcast<u32>(ndc.w);
+    atomicMin(&depthBuffer[index], uint_depth);
+}
 
-        fn coarse(pointIndex: u32) -> vec3<u32> {
-            let coarsebits = courseBuffer[pointIndex];
+fn coarse(pointIndex: u32) -> vec3<u32> {
+    let coarsebits = courseBuffer[pointIndex];
 
-            // X, Y and Z are 10 bit integer coordinates, each with 1024 possible values
-            let x = u32((coarsebits >> 0) & 0x3FF);
-            let y = u32((coarsebits >> 10) & 0x3FF);
-            let z = u32((coarsebits >> 20) & 0x3FF);
+    // X, Y and Z are 10 bit integer coordinates, each with 1024 possible values
+    let x = u32((coarsebits >> 0) & 0x3FF);
+    let y = u32((coarsebits >> 10) & 0x3FF);
+    let z = u32((coarsebits >> 20) & 0x3FF);
 
-            return vec3<u32>(x, y, z);
-        }
+    return vec3<u32>(x, y, z);
+}
 
 fn medium(pointIndex: u32) -> vec3<u32> {
     let coarsebits = courseBuffer[pointIndex];

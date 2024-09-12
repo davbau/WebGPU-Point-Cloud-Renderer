@@ -4,14 +4,19 @@ import {ArrayBufferHandler} from "./ArrayBufferHandler";
 
 export abstract class DataHandler {
     abstract add(data: ArrayBuffer): void;
+
     abstract addWithLoop(data: ArrayBuffer): Promise<void>;
+
     abstract getBufferLength(buffer_num: number): number;
+
     abstract numberOfBuffers(): number;
+
     abstract getBufferSize(): number;
 
 }
 
-export class BatchHandler extends DataHandler{
+export class BatchHandler extends DataHandler {
+    private counter: number = 0;
     private _device: GPUDevice;
     /**
      * The maximum number of points in each batch.
@@ -39,7 +44,8 @@ export class BatchHandler extends DataHandler{
         this._batches.push(new Batch(
             this._device,
             this._batchSize,
-            this._screenSize
+            this._screenSize,
+            this.counter++
         ));
         return this._batches[this._batches.length - 1];
     }
@@ -74,25 +80,6 @@ export class BatchHandler extends DataHandler{
      */
     async add(data: ArrayBuffer): Promise<void> {
         let remainingData = data;
-        /*
-        const lastFilledAmount = this._batches[this._batches.length - 1].filledSize();
-        if (lastFilledAmount > 0) {
-            const dataToFill = this._batchSize - lastFilledAmount;
-            const dataToWrite = remainingData.slice(0, dataToFill);
-            const wait = this._batches[this._batches.length - 1].loadData(dataToWrite);
-            remainingData = remainingData.slice(dataToFill);
-            await wait;
-        }
-
-        let currentBatch = this._batches[this._batches.length - 1];
-        while (remainingData.byteLength > 0) {
-            const dataToWrite = remainingData.slice(0, this._batchSize);
-            const wait = currentBatch.loadData(dataToWrite);
-            remainingData = remainingData.slice(this._batchSize);
-            await wait;
-            currentBatch = this.addBatch();
-        }
-        */
 
         while (remainingData.byteLength > 0) {
             const currentBatch = this._batches[this._batches.length - 1];
@@ -112,15 +99,12 @@ export class BatchHandler extends DataHandler{
     }
 
     async writeOneBufferToGPU(): Promise<void> {
-        let counter = 0;
-        this._batches.forEach(batch => {
-            if (batch.canBeWrittenToGPU()) {
-                console.log(`Writing batch ${counter} to GPU`);
-                batch.writeDataToGPUBuffer();
+        for (let b of this._batches) {
+            if (b.canBeWrittenToGPU()) {
+                await b.writeDataToGPUBuffer();
                 return;
             }
-            counter++;                      
-        });
+        }
     }
 
     async addWithLoop(data: ArrayBuffer): Promise<void> {

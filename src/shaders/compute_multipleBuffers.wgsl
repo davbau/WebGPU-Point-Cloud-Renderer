@@ -44,9 +44,9 @@ fn main(
         p = fine(pointIndex);
     }
 
-    let X = f32(p.x) * uniforms.size.x / factor + uniforms.origin.x;
-    let Y = f32(p.y) * uniforms.size.y / factor + uniforms.origin.y;
-    let Z = f32(p.z) * uniforms.size.z / factor + uniforms.origin.z;
+    let X = f32(p.x) * (uniforms.size.x / factor) + uniforms.origin.x;
+    let Y = f32(p.y) * (uniforms.size.y / factor) + uniforms.origin.y;
+    let Z = f32(p.z) * (uniforms.size.z / factor) + uniforms.origin.z;
 
     let color = colorBuffer[pointIndex];
 
