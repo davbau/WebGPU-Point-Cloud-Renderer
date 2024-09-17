@@ -141,9 +141,9 @@ export class Batch {
 
         await boundingBoxFound;
 
-        // unit32 max value
         const boxSize = this.getBoxSize();
         const origin = this.getOrigin();
+        // unit32 max value
         const factor = 2 ** 32;
 
         const dataView = new DataView(data);
@@ -216,16 +216,16 @@ export class Batch {
             */
 
             // /*
-            this._device.queue.onSubmittedWorkDone().then(() => {
-                // finished writing to GPU
-                this.buffersReadyToWrite = false;
-                this.buffersWrittenToGPU = true;
-                this.buffersInFlight = false;
-                console.log(`Finished writing ${this.gpuBuffer_coarse.size * 4} bytes of data to GPU buffer for Batch: `, this._id);
-            }).catch((error) => {
-                console.error("Error writing data to GPU buffer for Batch: ", this._id, error);
-            });
-            // */
+                this._device.queue.onSubmittedWorkDone().then(() => {
+                    // finished writing to GPU
+                    this.buffersReadyToWrite = false;
+                    this.buffersWrittenToGPU = true;
+                    this.buffersInFlight = false;
+                    console.log(`Finished writing ${this.gpuBuffer_coarse.size * 4} bytes of data to GPU buffer for Batch: `, this._id);
+                }).catch((error) => {
+                    console.error("Error writing data to GPU buffer for Batch: ", this._id, error);
+                });
+                // */
         }
     }
 

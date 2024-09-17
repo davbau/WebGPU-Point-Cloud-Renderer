@@ -14,6 +14,17 @@ module.exports = {
     module: {
         rules: [
             {
+                test: /\.worker\.(js|ts)$/, // Match .worker.js and .worker.ts files
+                use: [
+                    {
+                        loader: 'ts-loader', // Use ts-loader to process TypeScript files
+                        options: {
+                            transpileOnly: true, // Speeds up compilation
+                        },
+                    },
+                ],
+            },
+            {
                 test: /\.ts$/,
                 exclude: /node_modules/,
                 use: 'ts-loader',
@@ -21,7 +32,7 @@ module.exports = {
             {
                 test: /\.wgsl$/,
                 use: 'ts-shader-loader'
-            }
+            },
         ]
     },
 

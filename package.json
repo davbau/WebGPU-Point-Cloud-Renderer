@@ -6,7 +6,7 @@
     "start": "npm i && npm run build && npm run serve",
     "serve": "cd dist; http-server -p 9090 -c-1",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "webpack --config webpack.config.js"
+    "build": "webpack --config webpack.config.js --stats-children"
   },
   "keywords": [],
   "author": "",
@@ -19,7 +19,6 @@
     "html-webpack-plugin": "^5.6.0",
     "http-server": "^14.1.1",
     "stats.js": "^0.17.0",
-    "ts-loader": "^9.5.1",
     "ts-shader-loader": "^2.0.2",
     "typescript": "^5.5.3",
     "webgpu-matrix": "^1.0.0",
@@ -28,6 +27,8 @@
   },
   "devDependencies": {
     "@types/dat.gui": "^0.7.13",
-    "@types/stats.js": "^0.17.3"
+    "@types/stats.js": "^0.17.3",
+    "ts-loader": "^9.5.1",
+    "worker-loader": "^3.0.8"
   }
 }

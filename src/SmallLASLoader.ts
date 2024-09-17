@@ -1,4 +1,5 @@
 import {double, Point, u_char, u_long, u_long_long, u_short} from "./types/c_equivalents";
+import LasWorker from "worker-loader!./LasLoaderWebWorker.worker.ts";
 
 export const LAS_FILE_ENDINGS = [
     ".las",
@@ -176,7 +177,8 @@ export class SmallLASLoader {
     async loadLasPointsAsBuffer(file: File, header: LASHeader_small, max_points: number = 1e12): Promise<ArrayBuffer> {
         const buffer = await file.arrayBuffer();
 
-        return this.loadLasPointsAsBufferHelper(buffer, header, max_points);
+        // return this.loadLasPointsAsBufferHelper(buffer, header, max_points);
+        return this.loadLasPointsAsBufferHelperViaWorker(buffer, header, max_points); // Promise<Promise<ArrayBuffer>> gets flattened by JavaScript automatically -> Only Promise<ArrayBuffer>.
     }
 
     private loadLasPointsAsBufferHelper(buffer: ArrayBuffer, header: LASHeader_small, max_points: number = 1e12) {
@@ -198,32 +200,36 @@ export class SmallLASLoader {
         const pointView = new DataView(pointBuffer);
 
         for (let i = 0; i < Math.min(numberOfPoints_int, max_points); i += skipper) {
-            const read_offset = header.offsetToPointData + i * header.pointDataRecordLength;
-            let x = dataView.getInt32(read_offset + 0, true) * header.xScaleFactor + header.xOffset;
-            let y = dataView.getInt32(read_offset + 4, true) * header.yScaleFactor + header.yOffset;
-            let z = dataView.getInt32(read_offset + 8, true) * header.zScaleFactor + header.zOffset;
-
-            // use max and min extent to normalize
-            // x = (x - header.minX) / (header.maxX - header.minX);
-            // y = (y - header.minY) / (header.maxY - header.minY);
-            // z = (z - header.minZ) / (header.maxZ - header.minZ);
-
-            let R = this.colorTo256(dataView.getUint16(read_offset + rgbOffset + 0, true));
-            let G = this.colorTo256(dataView.getUint16(read_offset + rgbOffset + 2, true));
-            let B = this.colorTo256(dataView.getUint16(read_offset + rgbOffset + 4, true));
-            let r = Math.floor(R > 255 ? R / 256 : R);
-            let g = Math.floor(G > 255 ? G / 256 : G);
-            let b = Math.floor(B > 255 ? B / 256 : B);
-
-            // write points into buffer
-            const writeOffset = (i / skipper) * 16;
-            pointView.setFloat32(writeOffset + 0, x, true);
-            pointView.setFloat32(writeOffset + 4, y, true);
-            pointView.setFloat32(writeOffset + 8, z, true);
-            pointView.setUint32(writeOffset + 12, r << 16 | g << 8 | b, true);
+            this.omg(header, dataView, pointView, i, skipper, rgbOffset);
         }
 
         return pointBuffer;
+    }
+
+    async omg(header: LASHeader_small, dataView: DataView, pointView: DataView, i: number, skipper: number, rgbOffset: number) {
+        const read_offset = header.offsetToPointData + i * header.pointDataRecordLength;
+        let x = dataView.getInt32(read_offset + 0, true) * header.xScaleFactor + header.xOffset;
+        let y = dataView.getInt32(read_offset + 4, true) * header.yScaleFactor + header.yOffset;
+        let z = dataView.getInt32(read_offset + 8, true) * header.zScaleFactor + header.zOffset;
+
+        // use max and min extent to normalize
+        // x = (x - header.minX) / (header.maxX - header.minX);
+        // y = (y - header.minY) / (header.maxY - header.minY);
+        // z = (z - header.minZ) / (header.maxZ - header.minZ);
+
+        let R = this.colorTo256(dataView.getUint16(read_offset + rgbOffset + 0, true));
+        let G = this.colorTo256(dataView.getUint16(read_offset + rgbOffset + 2, true));
+        let B = this.colorTo256(dataView.getUint16(read_offset + rgbOffset + 4, true));
+        let r = Math.floor(R > 255 ? R / 256 : R);
+        let g = Math.floor(G > 255 ? G / 256 : G);
+        let b = Math.floor(B > 255 ? B / 256 : B);
+
+        // write points into buffer
+        const writeOffset = (i / skipper) * 16;
+        pointView.setFloat32(writeOffset + 0, x, true);
+        pointView.setFloat32(writeOffset + 4, y, true);
+        pointView.setFloat32(writeOffset + 8, z, true);
+        pointView.setUint32(writeOffset + 12, r << 16 | g << 8 | b, true);
     }
 
     async loadLasPointsAsPoints(file_path: string, header: LASHeader_small, max_points: number = 1e12): Promise<Point[]> {
@@ -299,6 +305,33 @@ export class SmallLASLoader {
             points.push(point);
         }
         return points;
+    }
+
+    // Your main thread
+
+    private async loadLasPointsAsBufferHelperViaWorker(buffer: ArrayBuffer, header: LASHeader_small, max_points: number = 1e12): Promise<ArrayBuffer> {
+        return new Promise((resolve, reject) => {
+            const worker = new Worker(new URL('./LasLoaderWebWorker.worker.ts', import.meta.url));
+            // const worker = new LasWorker();
+
+            worker.onmessage = (event) => {
+                const {pointBuffer} = event.data;
+                console.log("Point Buffer received from worker:", pointBuffer);
+                resolve(pointBuffer);
+            };
+
+            worker.onerror = (error) => {
+                console.error("Worker error:", error);
+                reject(error);
+            };
+
+            // Post data to the worker
+            worker.postMessage({
+                buffer: buffer,
+                header: header,
+                max_points: max_points
+            }, [buffer]);  // Transfer the buffer to avoid copying
+        });
     }
 
     private colorTo256(color: u_short): number {

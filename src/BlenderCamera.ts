@@ -31,7 +31,7 @@ export class BlenderCamera {
         this.projectionMatrix = mat4.perspective(fov, aspect, near, far);
         this.viewProjectionMatrix = mat4.identity();
 
-        this.sphericalCoordinate = new SphericalCoordinate(20, 0, 0);
+        this.sphericalCoordinate = new SphericalCoordinate(12, 0, 0);
         this.sphericalCoordinate.setPhiDeg(90 + 30);
         this.sphericalCoordinate.setThetaDeg(360 - 45);
 

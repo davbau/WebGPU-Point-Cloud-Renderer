@@ -77,15 +77,6 @@ export class FileDropHandler {
             });
         }
 
-        /*
-                this.loadDroppedFiles(loadedFiles).then(r => {
-                    console.log("Loaded files", r);
-
-                    for (let loadedFile of r) {
-
-                    }
-                });
-        */
         this.loadDroppedFiles(loadedFiles);
     }
     async loadDroppedFiles(files: File[]) {

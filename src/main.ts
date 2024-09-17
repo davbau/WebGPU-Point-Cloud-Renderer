@@ -26,6 +26,7 @@ const device = (await adapter.requestDevice(
             maxBufferSize: 1 * k1Gigabyte,
             // maxComputeWorkgroupStorageSize: 65536
             maxStorageBufferBindingSize: 1 * k1Gigabyte,
+            // maxDynamicStorageBuffersPerPipelineLayout: 6,
         },
         requiredFeatures: ['timestamp-query'],
     }
@@ -72,8 +73,8 @@ gui.add(params, 'copyTiming', ['every_frame', 'once']);
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
 
 // Region pipeline
-// import compute_shader from "./shaders/compute.wgsl";
-import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
+import compute_shader from "./shaders/compute.wgsl";
+// import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
 
 const computeShaderModule = device.createShaderModule({
     label: "compute shader module",
@@ -89,8 +90,8 @@ const computePipeline = device.createComputePipeline({
 });
 
 
-// import compute_depth_shader from "./shaders/compute_depth_shader.wgsl";
-import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
+import compute_depth_shader from "./shaders/compute_depth_shader.wgsl";
+// import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
 
 const compute_depth_shaderModule = device.createShaderModule({
     label: "compute depth shader module",
@@ -122,14 +123,14 @@ const framebuffer = device.createBuffer({
     label: "framebuffer",
     size: canvas.width * canvas.height * 4 * Float32Array.BYTES_PER_ELEMENT,
     usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    mappedAtCreation: true,
+    mappedAtCreation: false,
 });
 
 const depthBuffer = device.createBuffer({
     label: "depth buffer",
     size: canvas.width * canvas.height * Float32Array.BYTES_PER_ELEMENT,
     usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    mappedAtCreation: true,
+    mappedAtCreation: false,
 });
 
 // Region Debug Buffers
@@ -221,7 +222,7 @@ function convertPointsToArrayBuffer(points: Point[]): ArrayBuffer {
 // const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(BUFFER_HANDLER_SIZE / 16));
 
 // const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(5e7));
-const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(1e6));
+// const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(1e6));
 
 // const pointsArr = convertPointsToArrayBuffer(las_points_as_points);
 // const pointsArr = await lassLoader.loadLASPointsAsBuffer(file_path, las_header);
@@ -276,8 +277,8 @@ let multiple_Buffer = [
     //     }
     // )
 ];
- */
 let currentUsedBufferIndex = 0;
+ */
 // console.log(points);
 // new Float32Array(pointsBuffer.getMappedRange()).set(new Float32Array(arrayBufferHandler.getBufferSize() - 1));
 // pointsBuffer.unmap();
@@ -301,10 +302,10 @@ const stagingBuffer = device.createBuffer({
 const uniformBuffer = device.createBuffer({
     label: "uniform buffer",
     size: 4 * Float32Array.BYTES_PER_ELEMENT    // canvas width, height, 2x padding
-        + 16 * Float32Array.BYTES_PER_ELEMENT   // mVP
-        + 4 * Float32Array.BYTES_PER_ELEMENT    // Batch origin
-        + 4 * Float32Array.BYTES_PER_ELEMENT    // Batch size
-        + 4 * Float32Array.BYTES_PER_ELEMENT,   // render type
+        + 16 * Float32Array.BYTES_PER_ELEMENT,   // mVP
+        // + 4 * Float32Array.BYTES_PER_ELEMENT    // Batch origin
+        // + 4 * Float32Array.BYTES_PER_ELEMENT    // Batch size
+        // + 4 * Float32Array.BYTES_PER_ELEMENT,   // render type
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
 });
 
@@ -400,64 +401,75 @@ const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(
 // unmap depth buffer
 depthBuffer.unmap();
 
-requestAnimationFrame(generateFrame);
 const batchHandler = arrayBufferHandler as BatchHandler;
+
+/*
+const nrOfTestPoints = 1e6;
+const testBuffer = device.createBuffer({
+    label: "test buffer",
+    size: nrOfTestPoints * 4 * Float32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
+    mappedAtCreation: true,
+});
+const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(nrOfTestPoints));
+new Float32Array(testBuffer.getMappedRange()).set(new Float32Array(cubePointsArr));
+testBuffer.unmap();
+
+const test_depth_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [
+    uniformBuffer,
+    testBuffer,
+    depthBuffer,
+]);
+
+const test_compute_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [
+    uniformBuffer,
+    testBuffer,
+    depthBuffer,
+    framebuffer,
+]);
+*/
 
 async function generateFrame() {
     stats.begin();
 
     let commandEncoder = device.createCommandEncoder();
 
-    // Region Uniform
+    // get mVP matrix
     mat4.multiply(camera.getViewProjectionMatrix(), modelMatrix, mVP);
 
-    // const uniform_data = new Float32Array([
-    //     screen_size[0], screen_size[1],
-    //     0, 0, // padding
-    //     ...mVP
-    // ]);
-    // device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
-
+    // reset depth buffer
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
-
-    framebuffer.unmap();    // unmap framebuffer
-    await batchHandler.writeOneBufferToGPU();
-
-    let numberOfPoints = 0;
-    let compute_depth_shader_bindGroup: GPUBindGroup;
-    let compute_shader_bindGroup: GPUBindGroup;
+    const upload_waiter = batchHandler.writeOneBufferToGPU();
+    const batches_shown: number[] = [];
 
     for (const batch of batchHandler.getBatches()) {
         if (!batch.isWrittenToGPU()) {
             continue;
         }
-        if (batch.isOnScreen(mVP)) {
-            console.log("Batch is on screen");
+        if (!batch.isOnScreen(mVP)) {
+            // console.log(`batch ${batch.getID()} not on screen`);
+            continue;
         } else {
-            console.log("Batch is not on screen");
+            batches_shown.push(batch.getID());
         }
 
-        // const origin = new Float32Array(batch.getOrigin());
-        // const boxSize = new Float32Array(batch.getBoxSize());
-
+        // Region Uniform
         const uniform_data = new Float32Array([
             screen_size[0], screen_size[1],
             0, 0, // padding
             ...mVP,
-            ...batch.getOrigin(), 0,
-            ...batch.getBoxSize(), 0,
-            0, 0, 0, 0, // TODO: implement render type
+            // ...batch.getOrigin(), 0,
+            // ...batch.getBoxSize(), 0,
+            // 0, 0, 0, 0, // TODO: implement render type
         ]);
-
-        // console.log("screen size: ", screen_size[0], screen_size[1]);
-        // console.log("mVP: ", formatF32Array(mVP));
-        // console.log("origin: ", ((batch.getOrigin())));
-        // console.log("box size: ", ((batch.getBoxSize())));
-        // console.log("uniform buffer: ", uniform_data, "with length: ", uniform_data.length);
         device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
+        // const currentBuffer = multiple_Buffer[currentUsedBufferIndex];
+
+        // let nr_pointsInCurrentBuffer = nrOfTestPoints;
+        let nr_pointsInCurrentBuffer = batch.filledSize();
 
         // Region Workgroups
-        const totalWorkGroups = Math.ceil(batch.getAmountOfFilledPoints() / THREADS_PER_WORKGROUP);
+        const totalWorkGroups = Math.ceil(nr_pointsInCurrentBuffer / THREADS_PER_WORKGROUP);
         let xWorkGroups = 1;
         let yWorkGroups = 1;
         let zWorkGroups = 1;
@@ -470,29 +482,25 @@ async function generateFrame() {
         }
 
         // Region BindGroup
-        compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [
+        const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [
             uniformBuffer,
-            depthBuffer,
-            batch.getCoarseGPUBuffer(),
-            batch.getMediumGPUBuffer(),
-            batch.getFineGPUBuffer(),
-            // batch.getColorGPUBuffer(),
+            // testBuffer,
+            batch.getPointsGpuBuffer(),
+            depthBuffer
         ]);
-
-        compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [
+        const compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [
             uniformBuffer,
+            // testBuffer,
+            batch.getPointsGpuBuffer(),
             depthBuffer,
-            framebuffer,
-            batch.getCoarseGPUBuffer(),
-            batch.getMediumGPUBuffer(),
-            batch.getFineGPUBuffer(),
-            batch.getColorGPUBuffer(),
+            framebuffer
         ]);
 
         // Region Compute Depth Pass
         const compute_depth_pass = commandEncoder.beginComputePass();
         compute_depth_pass.setPipeline(compute_depth_pipeline);
         compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup);
+        // compute_depth_pass.setBindGroup(0, test_depth_bindGroup);
         compute_depth_pass.dispatchWorkgroups(
             Math.max(1, xWorkGroups),
             Math.max(1, yWorkGroups),
@@ -503,72 +511,33 @@ async function generateFrame() {
         const computePass = commandEncoder.beginComputePass();
         computePass.setPipeline(computePipeline);
         computePass.setBindGroup(0, compute_shader_bindGroup);
+        // computePass.setBindGroup(0, test_compute_bindGroup);
         computePass.dispatchWorkgroups(
             Math.max(1, xWorkGroups),
             Math.max(1, yWorkGroups),
             Math.max(1, zWorkGroups));
         computePass.end();
 
-        if (show_debug_buffers) {
-            // read buffer to debug
-            console.log("Frame buffer size: ", framebuffer.size);
-            commandEncoder.copyBufferToBuffer(framebuffer, 0, debug_framebuffer, 0, framebuffer.size);
-
-            console.log("Depth buffer size: ", depthBuffer.size);
-            commandEncoder.copyBufferToBuffer(depthBuffer, 0, debug_depthBuffer, 0, depthBuffer.size);
-
-            console.log("Uniform buffer size: ", debug_uniformBuffer.size);
-            commandEncoder.copyBufferToBuffer(uniformBuffer, 0, debug_uniformBuffer, 0, debug_uniformBuffer.size);
-
-            device.queue.submit([commandEncoder.finish()]);
-            console.log("Submitted work");
-
-            await device.queue.onSubmittedWorkDone();
-            console.log("Work done");
-
-            // debug uniform buffer
-            await debug_uniformBuffer.mapAsync(GPUMapMode.READ);
-            const debug_uniformBuffer_mappedRange = debug_uniformBuffer.getMappedRange();
-            const debug_uniformBuffer_data = new Uint32Array(debug_uniformBuffer_mappedRange);
-            console.log("uniform mapped range: ", debug_uniformBuffer_mappedRange);
-            console.log("debug uniform buffer: ", debug_uniformBuffer_data);
-            debug_uniformBuffer.unmap();
-
-            // debug framebuffer
-            await debug_framebuffer.mapAsync(GPUMapMode.READ);
-            const debug_framebuffer_mappedRange = debug_framebuffer.getMappedRange();
-            const debug_framebuffer_data = new Uint32Array(debug_framebuffer_mappedRange);
-            console.log("framebuffer mapped range: ", debug_framebuffer_mappedRange);
-            console.log("debug framebuffer: ", debug_framebuffer_data);
-            debug_framebuffer.unmap();
-
-            // debug depth buffer
-            await debug_depthBuffer.mapAsync(GPUMapMode.READ);
-            const debug_depthBuffer_mappedRange = debug_depthBuffer.getMappedRange();
-            const debug_depthBuffer_data = new Uint32Array(debug_depthBuffer_mappedRange);
-            console.log("depth buffer mapped range: ", debug_depthBuffer_mappedRange);
-            console.log("debug depth buffer: ", debug_depthBuffer_data);
-            debug_depthBuffer.unmap();
-        }
-
+        device.queue.submit([commandEncoder.finish()]);
         commandEncoder = device.createCommandEncoder();
 
-        numberOfPoints += batch.getAmountOfFilledPoints();
+        numberOfPoints += nr_pointsInCurrentBuffer;
 
         debug_div.innerText = `Number of points: ${numberOfPoints}
-        Number of points per buffer: ${batch.getBatchSize()},
-        Number of buffers: ${arrayBufferHandler.numberOfBuffers()},
+        Number of points per batch: ${batch.getBatchSize()},
+        Number of batches: ${arrayBufferHandler.numberOfBuffers()},
+        Batches shown: ${batches_shown.join(", ")},
         TpW: ${THREADS_PER_WORKGROUP},
         Workgroups: ${xWorkGroups} x ${yWorkGroups} x ${zWorkGroups},
         mvp matrix: ${mVP},
         `;
     }
 
-    // Region Display Pass
     // reset viewport
     (display_renderPassDescriptor.colorAttachments as GPURenderPassColorAttachment[])[0]
         .view = context.getCurrentTexture().createView();
 
+    // Region Display Pass
     const displayPass = commandEncoder.beginRenderPass(display_renderPassDescriptor);
     displayPass.setPipeline(displayPipeline);
     displayPass.setBindGroup(0, display_shader_bindGroup);
@@ -583,10 +552,13 @@ async function generateFrame() {
     device.queue.submit([commandEncoder.finish()]); // submit
     numberOfPoints = 0;
 
+    await upload_waiter;
     stats.end();
 
     requestAnimationFrame(generateFrame);
 }
+
+requestAnimationFrame(generateFrame);
 
 function formatF32Array(float32Array: Float32Array): string {
     const helper = mat4.transpose(float32Array);
