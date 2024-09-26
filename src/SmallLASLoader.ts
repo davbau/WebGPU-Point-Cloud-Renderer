@@ -177,8 +177,8 @@ export class SmallLASLoader {
     async loadLasPointsAsBuffer(file: File, header: LASHeader_small, max_points: number = 1e12): Promise<ArrayBuffer> {
         const buffer = await file.arrayBuffer();
 
-        // return this.loadLasPointsAsBufferHelper(buffer, header, max_points);
-        return this.loadLasPointsAsBufferHelperViaWorker(buffer, header, max_points); // Promise<Promise<ArrayBuffer>> gets flattened by JavaScript automatically -> Only Promise<ArrayBuffer>.
+        return this.loadLasPointsAsBufferHelper(buffer, header, max_points);
+        // return this.loadLasPointsAsBufferHelperViaWorker(buffer, header, max_points); // Promise<Promise<ArrayBuffer>> gets flattened by JavaScript automatically -> Only Promise<ArrayBuffer>.
     }
 
     private loadLasPointsAsBufferHelper(buffer: ArrayBuffer, header: LASHeader_small, max_points: number = 1e12) {

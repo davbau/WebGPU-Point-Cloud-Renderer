@@ -60,4 +60,21 @@ export class Util {
             ]
         } as GPURenderPassDescriptor;
     };
+
+    static segmentNumber(n: number): string {
+        const s = n.toString();
+        let result = "";
+        let count = 1;
+
+        for (let i = s.length; i > 0; i--) {
+            result = s.at(i - 1) + result;
+            if (count === 3) {
+                result = " " + result;
+                count = 0;
+            }
+            count++;
+        }
+
+        return result;
+    }
 }

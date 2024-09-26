@@ -18,8 +18,8 @@ struct Point {
 const factor = 4294967296.0; // 2^32
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(2) var<storage, read_write> depthBuffer: array<atomic<u32>>;
-@group(0) @binding(1) var<storage, read_write> frameBuffer: array<atomic<u32>>;
+@group(0) @binding(1) var<storage, read_write> depthBuffer: array<atomic<u32>>;
+@group(0) @binding(2) var<storage, read_write> frameBuffer: array<atomic<u32>>;
 
 @group(0) @binding(3) var<storage, read> courseBuffer: array<u32>;
 @group(0) @binding(4) var<storage, read> mediumBuffer: array<u32>;
@@ -89,7 +89,7 @@ fn main(
 //        atomicAdd(&frameBuffer[index * 4 + 1], 0);
 //        atomicAdd(&frameBuffer[index * 4 + 2], 0);
 //        atomicAdd(&frameBuffer[index * 4 + 3], 1);
-//        return;
+        return;
     }
 
     // uint32_t

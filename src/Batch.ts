@@ -413,4 +413,8 @@ export class Batch {
     getAmountOfFilledPoints() {
         return this._filledSize;
     }
+
+    getID() {
+        return this._id;
+    }
 }

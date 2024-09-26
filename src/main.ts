@@ -73,8 +73,8 @@ gui.add(params, 'copyTiming', ['every_frame', 'once']);
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
 
 // Region pipeline
-import compute_shader from "./shaders/compute.wgsl";
-// import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
+// import compute_shader from "./shaders/compute.wgsl";
+import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
 
 const computeShaderModule = device.createShaderModule({
     label: "compute shader module",
@@ -90,8 +90,8 @@ const computePipeline = device.createComputePipeline({
 });
 
 
-import compute_depth_shader from "./shaders/compute_depth_shader.wgsl";
-// import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
+// import compute_depth_shader from "./shaders/compute_depth_shader.wgsl";
+import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
 
 const compute_depth_shaderModule = device.createShaderModule({
     label: "compute depth shader module",
@@ -302,10 +302,10 @@ const stagingBuffer = device.createBuffer({
 const uniformBuffer = device.createBuffer({
     label: "uniform buffer",
     size: 4 * Float32Array.BYTES_PER_ELEMENT    // canvas width, height, 2x padding
-        + 16 * Float32Array.BYTES_PER_ELEMENT,   // mVP
-        // + 4 * Float32Array.BYTES_PER_ELEMENT    // Batch origin
-        // + 4 * Float32Array.BYTES_PER_ELEMENT    // Batch size
-        // + 4 * Float32Array.BYTES_PER_ELEMENT,   // render type
+        + 16 * Float32Array.BYTES_PER_ELEMENT   // mVP
+        + 4 * Float32Array.BYTES_PER_ELEMENT    // Batch origin
+        + 4 * Float32Array.BYTES_PER_ELEMENT    // Batch size
+        + 4 * Float32Array.BYTES_PER_ELEMENT,   // render type
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
 });
 
@@ -429,6 +429,11 @@ const test_compute_bindGroup = Util.createBindGroup(device, compute_shader_bindG
 ]);
 */
 
+const nrOfTestPoints = 1e5;
+const testArrayBuffer = convertPointsToArrayBuffer(createRandomPoints(nrOfTestPoints));
+batchHandler.add(testArrayBuffer);
+
+
 async function generateFrame() {
     stats.begin();
 
@@ -458,9 +463,9 @@ async function generateFrame() {
             screen_size[0], screen_size[1],
             0, 0, // padding
             ...mVP,
-            // ...batch.getOrigin(), 0,
-            // ...batch.getBoxSize(), 0,
-            // 0, 0, 0, 0, // TODO: implement render type
+            ...batch.getOrigin(), 0,
+            ...batch.getBoxSize(), 0,
+            0, 0, 0, 0, // TODO: implement render type
         ]);
         device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
         // const currentBuffer = multiple_Buffer[currentUsedBufferIndex];
@@ -482,6 +487,7 @@ async function generateFrame() {
         }
 
         // Region BindGroup
+        /*
         const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [
             uniformBuffer,
             // testBuffer,
@@ -494,6 +500,23 @@ async function generateFrame() {
             batch.getPointsGpuBuffer(),
             depthBuffer,
             framebuffer
+        ]);
+         */
+        const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [
+            uniformBuffer,
+            depthBuffer,
+            batch.getCoarseGPUBuffer(),
+            batch.getMediumGPUBuffer(),
+            batch.getFineGPUBuffer(),
+        ]);
+        const compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [
+            uniformBuffer,
+            depthBuffer,
+            framebuffer,
+            batch.getCoarseGPUBuffer(),
+            batch.getMediumGPUBuffer(),
+            batch.getFineGPUBuffer(),
+            batch.getColorGPUBuffer(),
         ]);
 
         // Region Compute Depth Pass
@@ -523,8 +546,8 @@ async function generateFrame() {
 
         numberOfPoints += nr_pointsInCurrentBuffer;
 
-        debug_div.innerText = `Number of points: ${numberOfPoints}
-        Number of points per batch: ${batch.getBatchSize()},
+        debug_div.innerText = `Number of points: ${Util.segmentNumber(numberOfPoints)},
+        Number of points per batch: ${Util.segmentNumber(batch.getBatchSize())},
         Number of batches: ${arrayBufferHandler.numberOfBuffers()},
         Batches shown: ${batches_shown.join(", ")},
         TpW: ${THREADS_PER_WORKGROUP},

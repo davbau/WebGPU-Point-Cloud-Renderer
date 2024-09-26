@@ -1,6 +1,6 @@
 import {vec2} from "webgpu-matrix";
 import {ArrayBufferHandler} from "./ArrayBufferHandler";
-import {OneBufferBatch} from "./OneBufferBatch";
+import {Batch} from "./Batch";
 
 export abstract class DataHandler {
     abstract add(data: ArrayBuffer): void;
@@ -23,7 +23,7 @@ export class BatchHandler extends DataHandler {
      * @private
      */
     private _batchSize: number;
-    private _batches: OneBufferBatch[];
+    private _batches: Batch[];
     private _screenSize: vec2.default;
 
     constructor(
@@ -40,8 +40,8 @@ export class BatchHandler extends DataHandler {
         this.addBatch();
     }
 
-    addBatch(): OneBufferBatch {
-        this._batches.push(new OneBufferBatch(
+    addBatch(): Batch {
+        this._batches.push(new Batch(
             this._device,
             this._batchSize,
             this._screenSize,
@@ -50,15 +50,15 @@ export class BatchHandler extends DataHandler {
         return this._batches[this._batches.length - 1];
     }
 
-    forEachBatch(callback: (batch: OneBufferBatch) => void) {
+    forEachBatch(callback: (batch: Batch) => void) {
         this._batches.forEach(callback);
     }
 
-    forEachBatchWithIndex(callback: (batch: OneBufferBatch, index: number) => void) {
+    forEachBatchWithIndex(callback: (batch: Batch, index: number) => void) {
         this._batches.forEach(callback);
     }
 
-    forEachBatchOnScreen(mvp: Float32Array, callback: (batch: OneBufferBatch) => void) {
+    forEachBatchOnScreen(mvp: Float32Array, callback: (batch: Batch) => void) {
         this._batches.forEach(batch => {
             if (batch.isOnScreen(mvp)) {
                 callback(batch);
