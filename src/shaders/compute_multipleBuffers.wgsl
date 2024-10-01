@@ -7,15 +7,17 @@ struct Uniforms {
     renderMode: u32,
 };
 
-struct Point {
-    x: f32,
-    y: f32,
-    z: f32,
-//    color: uint32_t,
-    color: u32,
-};
+//struct Point {
+//    x: f32,
+//    y: f32,
+//    z: f32,
+////    color: uint32_t,
+//    color: u32,
+//};
 
-const factor = 4294967296.0; // 2^32
+//const factor = 4294967296.0; // 2^32
+//const factor = 2147483648.0; // 2^31
+const factor = 1073741824; // 2^30
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> depthBuffer: array<atomic<u32>>;
@@ -44,9 +46,9 @@ fn main(
         p = fine(pointIndex);
     }
 
-    let X = f32(p.x) * (uniforms.size.x / factor) + uniforms.origin.x;
-    let Y = f32(p.y) * (uniforms.size.y / factor) + uniforms.origin.y;
-    let Z = f32(p.z) * (uniforms.size.z / factor) + uniforms.origin.z;
+    let X = f32(p.x) * f32(uniforms.size.x / factor) + uniforms.origin.x;
+    let Y = f32(p.y) * f32(uniforms.size.y / factor) + uniforms.origin.y;
+    let Z = f32(p.z) * f32(uniforms.size.z / factor) + uniforms.origin.z;
 
     let color = colorBuffer[pointIndex];
 
@@ -93,9 +95,9 @@ fn main(
     }
 
     // uint32_t
-//    atomicAdd(&frameBuffer[index * 4 + 0], (color >> 16) & 0xFF); // r
-    // force red for testing
-    atomicAdd(&frameBuffer[index * 4 + 0], 0xff); // r
+    // testing with red
+//    atomicAdd(&frameBuffer[index * 4 + 0], 0xff); // r
+    atomicAdd(&frameBuffer[index * 4 + 0], (color >> 16) & 0xFF); // r
     atomicAdd(&frameBuffer[index * 4 + 1], (color >> 8) & 0xFF); // g
     atomicAdd(&frameBuffer[index * 4 + 2], (color >> 0) & 0xFF); // b
     atomicAdd(&frameBuffer[index * 4 + 3], 1); // a
@@ -105,9 +107,13 @@ fn coarse(pointIndex: u32) -> vec3<u32> {
     let coarsebits = courseBuffer[pointIndex];
 
     // X, Y and Z are 10 bit integer coordinates, each with 1024 possible values
-    let x = u32((coarsebits >> 0) & 0x3FF);
-    let y = u32((coarsebits >> 10) & 0x3FF);
-    let z = u32((coarsebits >> 20) & 0x3FF);
+    let x_coarse = u32((coarsebits >> 20) & 0x3FF);
+    let y_coarse = u32((coarsebits >> 10) & 0x3FF);
+    let z_coarse = u32((coarsebits >> 0) & 0x3FF);
+
+    let x = u32(x_coarse << 20);
+    let y = u32(y_coarse << 20);
+    let z = u32(z_coarse << 20);
 
     return vec3<u32>(x, y, z);
 }
@@ -117,17 +123,17 @@ fn medium(pointIndex: u32) -> vec3<u32> {
     let mediumbits = mediumBuffer[pointIndex];
 
     // X, Y and Z are 10 bit integer coordinates, each with 1024 possible values
-    let x_coarse = u32((coarsebits >> 0) & 0x3FF);
+    let x_coarse = u32((coarsebits >> 20) & 0x3FF);
     let y_coarse = u32((coarsebits >> 10) & 0x3FF);
-    let z_coarse = u32((coarsebits >> 20) & 0x3FF);
+    let z_coarse = u32((coarsebits >> 0) & 0x3FF);
 
-    let x_medium = u32((mediumbits >> 0) & 0x3FF);
+    let x_medium = u32((mediumbits >> 20) & 0x3FF);
     let y_medium = u32((mediumbits >> 10) & 0x3FF);
-    let z_medium = u32((mediumbits >> 20) & 0x3FF);
+    let z_medium = u32((mediumbits >> 0) & 0x3FF);
 
-    let x = u32((x_coarse << 20) | (x_medium << 10));
-    let y = u32((y_coarse << 20) | (y_medium << 10));
-    let z = u32((z_coarse << 20) | (z_medium << 10));
+    let x = (x_coarse << 20) | (x_medium << 10);
+    let y = (y_coarse << 20) | (y_medium << 10);
+    let z = (z_coarse << 20) | (z_medium << 10);
 
     return vec3<u32>(x, y, z);
 }
@@ -138,21 +144,21 @@ fn fine(pointIndex: u32) -> vec3<u32> {
     let finebits = fineBuffer[pointIndex];
 
     // X, Y and Z are 10 bit integer coordinates, each with 1024 possible values
-    let x_coarse = u32((coarsebits >> 0) & 0x3FF);
+    let x_coarse = u32((coarsebits >> 20) & 0x3FF);
     let y_coarse = u32((coarsebits >> 10) & 0x3FF);
-    let z_coarse = u32((coarsebits >> 20) & 0x3FF);
+    let z_coarse = u32((coarsebits >> 0) & 0x3FF);
 
-    let x_medium = u32((mediumbits >> 0) & 0x3FF);
+    let x_medium = u32((mediumbits >> 20) & 0x3FF);
     let y_medium = u32((mediumbits >> 10) & 0x3FF);
-    let z_medium = u32((mediumbits >> 20) & 0x3FF);
+    let z_medium = u32((mediumbits >> 0) & 0x3FF);
 
-    let x_fine = u32((finebits >> 0) & 0x3FF);
+    let x_fine = u32((finebits >> 20) & 0x3FF);
     let y_fine = u32((finebits >> 10) & 0x3FF);
-    let z_fine = u32((finebits >> 20) & 0x3FF);
+    let z_fine = u32((finebits >> 0) & 0x3FF);
 
-    let x = u32((x_coarse << 20) | (x_medium << 10) | x_fine);
-    let y = u32((y_coarse << 20) | (y_medium << 10) | y_fine);
-    let z = u32((z_coarse << 20) | (z_medium << 10) | z_fine);
+    let x = (x_coarse << 20) | (x_medium << 10) | x_fine;
+    let y = (y_coarse << 20) | (y_medium << 10) | y_fine;
+    let z = (z_coarse << 20) | (z_medium << 10) | z_fine;
 
     return vec3<u32>(x, y, z);
 }

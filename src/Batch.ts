@@ -18,7 +18,7 @@ export class Batch {
      */
     private _boundingBox: number[];
     /**
-     * Size of the batch. The size is an array of 3 numbers: [sizeX, sizeY, sizeZ].
+     * Size of the batch in 3D space. The size is an array of 3 numbers: [sizeX, sizeY, sizeZ].
      * @private
      */
     private _size: number[];
@@ -51,6 +51,9 @@ export class Batch {
      */
     private _id: number;
 
+    private lastUsedMVP: Float32Array;
+    private transformedCornersCache: Float32Array;
+
     /**
      * The GPU buffer containing the vertices of the batch.
      * The course buffer contains the 10 most significant bits of x, y and z as distances from the bounding box origin.
@@ -65,6 +68,7 @@ export class Batch {
     private hostBuffer_medium?: Uint32Array;
     private hostBuffer_fine?: Uint32Array;
     private hostBuffer_color?: Uint32Array;
+
     private buffersReadyToWrite: boolean;
     private buffersInFlight: boolean;
     private buffersWrittenToGPU: boolean;
@@ -99,15 +103,19 @@ export class Batch {
         this.buffersInFlight = false;
         this.buffersWrittenToGPU = false;
 
-        this._boundingBox = [0, 0, 0, 0, 0, 0];
+        const b0 = 2 ** 16;
+        this._boundingBox = [b0, b0, b0, -b0, -b0, -b0];
         this._size = [0, 0, 0];
         this._filledSize = 0;
+
+        this.lastUsedMVP = new Float32Array(16);
+        this.transformedCornersCache = new Float32Array(24);
     }
 
-    private makeGPUBuffer(size: number, label: string) {
+    private makeGPUBuffer(number_of_points: number, label: string) {
         return this._device.createBuffer({
             label: label,
-            size: size * Uint32Array.BYTES_PER_ELEMENT,
+            size: number_of_points * Uint32Array.BYTES_PER_ELEMENT,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
     }
@@ -144,7 +152,9 @@ export class Batch {
         const boxSize = this.getBoxSize();
         const origin = this.getOrigin();
         // unit32 max value
-        const factor = 2 ** 32;
+        // const factor = 2 ** 32 - 1;
+        const factor = 2 ** 30; // 0b0100_0000_0000_0000_0000_0000_0000_0000
+        const bitmask30 = factor - 1; // 0b0011_1111_1111_1111_1111_1111_1111_1111
 
         const dataView = new DataView(data);
         for (let i = 0; i < numPointsToLoad; i++) {
@@ -159,31 +169,37 @@ export class Batch {
             let zDist = z - origin[2];
 
             // transform to [0, 1]
-            xDist = xDist / boxSize[0];
-            yDist = yDist / boxSize[1];
-            zDist = zDist / boxSize[2];
+            if (xDist !== 0) {
+                xDist = xDist / boxSize[0];
+            }
+            if (yDist !== 0) {
+                yDist = yDist / boxSize[1];
+            }
+            if (zDist !== 0) {
+                zDist = zDist / boxSize[2];
+            }
 
             // transform to [0, 2^32]
-            xDist = Math.floor(xDist * factor);
-            yDist = Math.floor(yDist * factor);
-            zDist = Math.floor(zDist * factor);
+            xDist = Math.floor(xDist * bitmask30);
+            yDist = Math.floor(yDist * bitmask30);
+            zDist = Math.floor(zDist * bitmask30);
 
             // read out coarse, medium and fine
-            const coarseX = (xDist >> 22) & 0x3FF;
-            const coarseY = (yDist >> 22) & 0x3FF;
-            const coarseZ = (zDist >> 22) & 0x3FF;
+            const coarseX = (xDist >> 20) & 0x3FF;
+            const coarseY = (yDist >> 20) & 0x3FF;
+            const coarseZ = (zDist >> 20) & 0x3FF;
             // coarse[i] = (coarseX << 20) | (coarseY << 10) | coarseZ;
             courseView.setUint32(i * 4, (coarseX << 20) | (coarseY << 10) | coarseZ, true);
 
-            const mediumX = (xDist >> 12) & 0x3FF;
-            const mediumY = (yDist >> 12) & 0x3FF;
-            const mediumZ = (zDist >> 12) & 0x3FF;
+            const mediumX = (xDist >> 10) & 0x3FF;
+            const mediumY = (yDist >> 10) & 0x3FF;
+            const mediumZ = (zDist >> 10) & 0x3FF;
             // medium[i] = (mediumX << 20) | (mediumY << 10) | mediumZ;
             mediumView.setUint32(i * 4, (mediumX << 20) | (mediumY << 10) | mediumZ, true);
 
-            const fineX = (xDist >> 2) & 0x3FF;
-            const fineY = (yDist >> 2) & 0x3FF;
-            const fineZ = (zDist >> 2) & 0x3FF;
+            const fineX = (xDist >> 0) & 0x3FF;
+            const fineY = (yDist >> 0) & 0x3FF;
+            const fineZ = (zDist >> 0) & 0x3FF;
             // fine[i] = (fineX << 20) | (fineY << 10) | fineZ;
             fineView.setUint32(i * 4, (fineX << 20) | (fineY << 10) | fineZ, true);
 
@@ -200,11 +216,14 @@ export class Batch {
 
     async writeDataToGPUBuffer() {
         if (this.buffersReadyToWrite && !this.buffersInFlight) {
-            console.log("Writing data to GPU buffer for Batch: ", this._id);
-            this._device.queue.writeBuffer(this.gpuBuffer_coarse, 0, this.hostBuffer_coarse!);
-            this._device.queue.writeBuffer(this.gpuBuffer_medium, 0, this.hostBuffer_medium!);
-            this._device.queue.writeBuffer(this.gpuBuffer_fine, 0, this.hostBuffer_fine!);
-            this._device.queue.writeBuffer(this.gpuBuffer_color, 0, this.hostBuffer_color!);
+            // console.log("Writing data to GPU buffer for Batch: ", this._id);
+            // console.log("GPU Buffer size: ", this.gpuBuffer_coarse.size);
+            // console.log("Host Buffer size: ", this.hostBuffer_coarse!.byteLength);
+            this._device.queue.writeBuffer(this.gpuBuffer_coarse, 0, this.hostBuffer_coarse!.buffer, 0, this.hostBuffer_coarse!.byteLength);
+            this._device.queue.writeBuffer(this.gpuBuffer_medium, 0, this.hostBuffer_medium!.buffer, 0, this.hostBuffer_medium!.byteLength);
+            this._device.queue.writeBuffer(this.gpuBuffer_fine, 0, this.hostBuffer_fine!.buffer, 0, this.hostBuffer_fine!.byteLength);
+            // console.log(`Color for batch ${this._id}: `, this.hostBuffer_color, 0);
+            this._device.queue.writeBuffer(this.gpuBuffer_color, 0, this.hostBuffer_color!.buffer, 0, this.hostBuffer_color!.byteLength);
             this.buffersInFlight = true;
 
             /*
@@ -216,16 +235,16 @@ export class Batch {
             */
 
             // /*
-                this._device.queue.onSubmittedWorkDone().then(() => {
-                    // finished writing to GPU
-                    this.buffersReadyToWrite = false;
-                    this.buffersWrittenToGPU = true;
-                    this.buffersInFlight = false;
-                    console.log(`Finished writing ${this.gpuBuffer_coarse.size * 4} bytes of data to GPU buffer for Batch: `, this._id);
-                }).catch((error) => {
-                    console.error("Error writing data to GPU buffer for Batch: ", this._id, error);
-                });
-                // */
+            this._device.queue.onSubmittedWorkDone().then(() => {
+                // finished writing to GPU
+                this.buffersReadyToWrite = false;
+                this.buffersWrittenToGPU = true;
+                this.buffersInFlight = false;
+                console.log(`Finished writing ${this.gpuBuffer_coarse.size * 4} bytes of data to GPU buffer for Batch: `, this._id);
+            }).catch((error) => {
+                console.error("Error writing data to GPU buffer for Batch: ", this._id, error);
+            });
+            // */
         }
     }
 
@@ -305,7 +324,10 @@ export class Batch {
             (this._boundingBox[4] - this._boundingBox[1]),
             (this._boundingBox[5] - this._boundingBox[2])
         ];
-        return;
+
+        // console.log("Bounding box: ", this._boundingBox);
+        // console.log("Size: ", this._size);
+        // console.log("Origin: ", this.getOrigin());
     }
 
     /**
@@ -341,7 +363,12 @@ export class Batch {
      * @param mvp The model view projection matrix.
      * @returns The transformed bounding box corners. The format is [x1, y1, z1, x2, y2, z2, ...]
      */
-    getBoundingBoxOnScreen(mvp: Float32Array) {
+    getBoundingBoxOnScreen(mvp: Float32Array): Float32Array {
+        if (mat4.equalsApproximately(mvp, this.lastUsedMVP)) {
+            if (this.transformedCornersCache)
+                return this.transformedCornersCache;
+        }
+
         const corners = [
             this._boundingBox[0], this._boundingBox[1], this._boundingBox[2],
             this._boundingBox[3], this._boundingBox[1], this._boundingBox[2],
@@ -355,12 +382,19 @@ export class Batch {
 
         const transformedCorners = new Float32Array(24);
         for (let i = 0; i < 8; i++) {
-            const corner = vec4.fromValues(corners[i * 3], corners[i * 3 + 1], corners[i * 3 + 2], 1);
+            const corner = vec4.fromValues(corners[i * 3], corners[i * 3 + 1], corners[i * 3 + 2], 1.0);
             const transformedCorner = vec4.create();
             vec4.transformMat4(corner, mvp, transformedCorner);
 
             const ndc = vec4.create();
             vec4.scale(transformedCorner, 1 / transformedCorner[3], ndc);
+
+            if (ndc[3] <= 0) {
+                transformedCorner[i * 3 + 0] = 0;
+                transformedCorner[i * 3 + 1] = 0;
+                transformedCorner[i * 3 + 2] = ndc[3];
+                continue;
+            }
 
             // Convert ndc to screen space coordinates
             const screen_x = (ndc[0] * 0.5 + 0.5) * this._screenSize[0];
@@ -371,6 +405,8 @@ export class Batch {
             transformedCorners[i * 3 + 2] = ndc[3];
         }
 
+        mat4.copy(mvp, this.lastUsedMVP);
+        this.transformedCornersCache = transformedCorners;
         return transformedCorners;
     }
 
@@ -416,5 +452,46 @@ export class Batch {
 
     getID() {
         return this._id;
+    }
+
+    /**
+     * Get the accuracy level of the batch. The accuracy level is determined by the size of the bounding box on screen.
+     * 0: coarse, 1: medium, 2: fine.
+     * @param mVP The model view projection matrix.
+     */
+    getAccuracyLevel(mVP: Float32Array) {
+        const cornersOnScreen = this.getBoundingBoxOnScreen(mVP);
+
+        // default to coarse level of detail
+        let accuracyLevel = 0;
+
+        let min_x = this._screenSize[0];
+        let max_x = 0;
+        let min_y = this._screenSize[1];
+        let max_y = 0;
+
+        for (let i = 0; i < 8; i++) {
+            const x = cornersOnScreen[i * 3];
+            const y = cornersOnScreen[i * 3 + 1];
+
+            if (x < min_x) min_x = x;
+            if (x > max_x) max_x = x;
+            if (y < min_y) min_y = y;
+            if (y > max_y) max_y = y;
+        }
+
+        const width = max_x - min_x;
+        const height = max_y - min_y;
+        // If bounding box is bigger than 1/8 of the screen, use medium level of detail
+        if (width > this._screenSize[0] / 8 || height > this._screenSize[1] / 8) {
+            accuracyLevel = 1;
+        }
+
+        // If bounding box is bigger than 1/4 of the screen, use fine level of detail
+        if (width > this._screenSize[0] / 4 || height > this._screenSize[1] / 4) {
+            accuracyLevel = 2;
+        }
+
+        return accuracyLevel;
     }
 }

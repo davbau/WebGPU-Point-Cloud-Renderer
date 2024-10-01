@@ -46,7 +46,8 @@ const maxStorageBufferBindingSize = device.limits.maxStorageBufferBindingSize;
 // Region Drag and Drop
 // const BUFFER_HANDLER_SIZE = 65536; // for uniform
 // const BUFFER_HANDLER_SIZE = ((7.5e4)) * SIZE_OF_POINT; // for storage
-const BUFFER_HANDLER_SIZE = ((1e6)) * SIZE_OF_POINT; // for storage
+const BUFFER_HANDLER_SIZE = ((Math.pow(2, 20))) * SIZE_OF_POINT; // for storage
+// const BUFFER_HANDLER_SIZE = 2 * SIZE_OF_POINT;
 
 // const THREADS_PER_WORKGROUP = 32;
 const THREADS_PER_WORKGROUP = 64;
@@ -60,14 +61,12 @@ let arrayBufferHandler = fileDropHandler.getArrayBufferHandler();
 // Region GUI
 const gui = new GUI();
 // GUI parameters
-const params: { type: 'model' | 'cube', copyType: 'direct' | 'staging_buffer', copyTiming: 'every_frame' | 'once' } = {
-    type: 'model',
-    copyType: 'direct',
-    copyTiming: 'every_frame',
+const params: {
+    renderQuality: 'auto' | 'coarse' | "medium" | "fine",
+} = {
+    renderQuality: 'auto',
 };
-gui.add(params, 'type', ['model', 'cube']);
-gui.add(params, 'copyType', ['direct', 'staging_buffer']);
-gui.add(params, 'copyTiming', ['every_frame', 'once']);
+gui.add(params, 'renderQuality', ['auto', 'coarse', "medium", "fine"]);
 
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
@@ -160,62 +159,6 @@ const debug_uniformBuffer = device.createBuffer({
 // depthBuffer.unmap();
 // Region Storage Buffer
 
-let useCube = true;
-
-function createRandomPoints(n: number): Point[] {
-    const points: Point[] = [];
-    const white: u_int32 = 0xffffff;
-    // (255, 255, 255) = white
-    console.log('white: ', white);
-    for (let i = 0; i < n; i++) {
-        points.push({
-            x: randomNumberBetween(0, 1),
-            y: randomNumberBetween(0, 1),
-            z: randomNumberBetween(0, 1),
-            color: ((Math.random() * 0xff) << 16)
-                + ((Math.random() * 0xff) << 8)
-                + (Math.random() * 0xff << 0),
-            // color: 0x0f0f0f,
-        });
-    }
-    return points;
-}
-
-// Create points in a line (x-axis)
-function createDepthBufferTest(n: number): Point[] {
-    const points: Point[] = [];
-    for (let i = 0; i < n; i++) {
-        points.push({
-            x: 0,
-            y: i / n * 100,
-            z: 0,
-            color: 0x0f0f0f,
-        });
-    }
-    return points;
-}
-
-function randomOneOfTwoNumbers(a: number, b: number): number {
-    return Math.random() > 0.5 ? a : b;
-}
-
-function randomNumberBetween(min: number, max: number): number {
-    return Math.random() * (max - min) + min;
-}
-
-function convertPointsToArrayBuffer(points: Point[]): ArrayBuffer {
-    const arr = new ArrayBuffer(points.length * 16);
-    const view = new DataView(arr);
-    for (let i = 0; i < points.length; i++) {
-        const offset = i * 16;
-        view.setFloat32(offset + 0, points[i].x, true);
-        view.setFloat32(offset + 4, points[i].y, true);
-        view.setFloat32(offset + 8, points[i].z, true);
-        view.setUint32(offset + 12, points[i].color, true);
-    }
-    return arr;
-}
-
 // max number of points is 2^16 - 1
 // const points = createRandomPoints(NUMBER_OF_POINTS);
 // const pointsArr = convertPointsToArrayBuffer(createDepthBufferTest(NUMBER_OF_POINTS));
@@ -244,45 +187,6 @@ function getPointsOverWorkgroups(numberOfPoints: number) {
     return (numberOfPoints) / Math.min(numberOfPoints, maxWorkgroupsPerDimension);
 }
 
-/*
-// console.log('points written to GPU: ', pointsArr);
-const pointsBuffer = device.createBuffer({
-    label: "points buffer",
-    size: arrayBufferHandler.getBufferSize(),
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    mappedAtCreation: false,
-});
-
-const multipleBuffer_BufferType = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
-// const multipleBuffer_BufferType = GPUBufferUsage.STORAGE | GPUBufferUsage.MAP_WRITE;
-let multiple_Buffer = [
-    device.createBuffer(
-        {
-            label: "points buffer 1",
-            size: arrayBufferHandler.getBufferSize(),
-            usage: multipleBuffer_BufferType,
-            mappedAtCreation: false,
-        }),
-    device.createBuffer(
-        {
-            label: "points buffer 2",
-            size: arrayBufferHandler.getBufferSize(),
-            usage: multipleBuffer_BufferType,
-            mappedAtCreation: false,
-        }),
-    // device.createBuffer({
-    //         label: "points buffer 3",
-    //         size: arrayBufferHandler.getBufferSize(),
-    //         usage: multipleBuffer_BufferType | GPUBufferUsage.COPY_DST,
-    //     }
-    // )
-];
-let currentUsedBufferIndex = 0;
- */
-// console.log(points);
-// new Float32Array(pointsBuffer.getMappedRange()).set(new Float32Array(arrayBufferHandler.getBufferSize() - 1));
-// pointsBuffer.unmap();
-
 // const STAGING_BUFFER_SIZE = 1e6 * SIZE_OF_POINT;
 const STAGING_BUFFER_SIZE = arrayBufferHandler.getBufferSize();
 const stagingBuffer = device.createBuffer({
@@ -292,13 +196,6 @@ const stagingBuffer = device.createBuffer({
 });
 
 // Region Uniform
-// const uniformBuffer = device.createBuffer({
-//     label: "uniform buffer",
-//     size: 4 * Float32Array.BYTES_PER_ELEMENT + 16 * Float32Array.BYTES_PER_ELEMENT,
-//     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-// });
-
-// new:
 const uniformBuffer = device.createBuffer({
     label: "uniform buffer",
     size: 4 * Float32Array.BYTES_PER_ELEMENT    // canvas width, height, 2x padding
@@ -340,29 +237,14 @@ const display_shader_bindGroup = device.createBindGroup({
     ]
 });
 
-// const multiple_depth_shader_bindGroups = multiple_Buffer.map((buffer) => {
-//     return Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [uniformBuffer, buffer, depthBuffer]);
-// });
-// const multiple_compute_shader_bindGroups = multiple_Buffer.map((buffer) => {
-//     return Util.createBindGroup(device, compute_shader_bindGroupLayout, [uniformBuffer, buffer, framebuffer, depthBuffer]);
-// });
-
 // Region RenderPassDescriptor
 const display_renderPassDescriptor = Util.create_display_RenderPassDescriptor(context, [0, 0, 0, 1]);
 
 // Region frame
 const aspect = canvas.width / canvas.height;
 console.log('aspect: ', aspect);
-// const camera = new BlenderCamera(60, aspect, 0.1, 100);
-// const inputHandler = new InputHandler(canvas, camera);
-// inputHandler.registerInputHandlers();
-// camera.moveCameraBase([0, 0, -2]);
 
-// const camera = new BlenderCamera(30, aspect, 0.1, 100);
 const camera = new BlenderCamera(Math.PI / 4, aspect, 1, 100);
-
-// camera.moveCameraBase([0, 0, -10]);
-// camera.moveCameraBase([0, 3, 0]);
 
 const inputHandler = new InputHandler(canvas, camera);
 inputHandler.registerInputHandlers();
@@ -381,8 +263,6 @@ import {ArrayBufferHandler} from "./ArrayBufferHandler";
 import {GUI} from "dat.gui";
 import {BatchHandler} from "./BatchHandler";
 import {debug} from "node:util";
-// import {RenderStrategy} from "./render_strategies/RenderStrategy";
-// import {CopyStrategy} from "./copy_strategies/CopyStrategy";
 
 const stats = new Stats();
 stats.showPanel(0);
@@ -403,36 +283,6 @@ depthBuffer.unmap();
 
 const batchHandler = arrayBufferHandler as BatchHandler;
 
-/*
-const nrOfTestPoints = 1e6;
-const testBuffer = device.createBuffer({
-    label: "test buffer",
-    size: nrOfTestPoints * 4 * Float32Array.BYTES_PER_ELEMENT,
-    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
-    mappedAtCreation: true,
-});
-const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(nrOfTestPoints));
-new Float32Array(testBuffer.getMappedRange()).set(new Float32Array(cubePointsArr));
-testBuffer.unmap();
-
-const test_depth_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [
-    uniformBuffer,
-    testBuffer,
-    depthBuffer,
-]);
-
-const test_compute_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [
-    uniformBuffer,
-    testBuffer,
-    depthBuffer,
-    framebuffer,
-]);
-*/
-
-const nrOfTestPoints = 1e5;
-const testArrayBuffer = convertPointsToArrayBuffer(createRandomPoints(nrOfTestPoints));
-batchHandler.add(testArrayBuffer);
-
 
 async function generateFrame() {
     stats.begin();
@@ -446,26 +296,48 @@ async function generateFrame() {
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
     const upload_waiter = batchHandler.writeOneBufferToGPU();
     const batches_shown: number[] = [];
+    const batches_renderType: number[] = [];
 
     for (const batch of batchHandler.getBatches()) {
         if (!batch.isWrittenToGPU()) {
             continue;
         }
         if (!batch.isOnScreen(mVP)) {
-            // console.log(`batch ${batch.getID()} not on screen`);
+            console.log(`batch ${batch.getID()} not on screen`);
+            batches_renderType.push(-1);
             continue;
         } else {
             batches_shown.push(batch.getID());
         }
 
+        // Region accuracy Level
+        let accuracy_level = 2;
+        switch (params.renderQuality) {
+            case "auto":
+                accuracy_level = batch.getAccuracyLevel(mVP);
+                break;
+            case "coarse":
+                accuracy_level = 0;
+                break;
+            case "medium":
+                accuracy_level = 1;
+                break;
+            case "fine":
+                accuracy_level = 2;
+                break;
+        }
+        batches_renderType.push(accuracy_level);
+
         // Region Uniform
+        // console.log(`batch.getOrigin() of batch ${batch.getID()}: `, batch.getOrigin());
+        // console.log(`batch.getBoxSize() of batch ${batch.getID()}: `, batch.getBoxSize());
         const uniform_data = new Float32Array([
             screen_size[0], screen_size[1],
             0, 0, // padding
             ...mVP,
             ...batch.getOrigin(), 0,
             ...batch.getBoxSize(), 0,
-            0, 0, 0, 0, // TODO: implement render type
+            accuracy_level, 0, 0, 0,
         ]);
         device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
         // const currentBuffer = multiple_Buffer[currentUsedBufferIndex];
@@ -549,7 +421,8 @@ async function generateFrame() {
         debug_div.innerText = `Number of points: ${Util.segmentNumber(numberOfPoints)},
         Number of points per batch: ${Util.segmentNumber(batch.getBatchSize())},
         Number of batches: ${arrayBufferHandler.numberOfBuffers()},
-        Batches shown: ${batches_shown.join(", ")},
+        Batches shown: ${batches_shown.join("\t")},
+        Batches render type: ${batches_renderType.join("\t")},
         TpW: ${THREADS_PER_WORKGROUP},
         Workgroups: ${xWorkGroups} x ${yWorkGroups} x ${zWorkGroups},
         mvp matrix: ${mVP},
