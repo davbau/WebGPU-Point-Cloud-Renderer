@@ -122,4 +122,26 @@ export class BatchHandler extends DataHandler {
     numberOfBuffers(): number {
         return this._batches.length;
     }
+
+    /**
+     * Get the total model extent of all the batches. Has the form [minX, minY, minZ, maxX, maxY, maxZ].
+     * @returns {number[6]} The total model extent of all the batches.
+     */
+    getTotalModelExtent() {
+        let min = [Infinity, Infinity, Infinity];
+        let max = [-Infinity, -Infinity, -Infinity];
+
+        this._batches.forEach(batch => {
+            const modelExtent = batch.getBoundingBox();
+            if (modelExtent[0] < min[0]) min[0] = modelExtent[0];
+            if (modelExtent[1] < min[1]) min[1] = modelExtent[1];
+            if (modelExtent[2] < min[2]) min[2] = modelExtent[2];
+
+            if (modelExtent[3] > max[0]) max[0] = modelExtent[3];
+            if (modelExtent[4] > max[1]) max[1] = modelExtent[4];
+            if (modelExtent[5] > max[2]) max[2] = modelExtent[5];
+        });
+
+        return [min[0], min[1], min[2], max[0], max[1], max[2]];
+    }
 }

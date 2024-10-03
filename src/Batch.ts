@@ -494,4 +494,11 @@ export class Batch {
 
         return accuracyLevel;
     }
+
+    /**
+     * Get the bounding box of the batch. The bounding box is an array of 6 numbers: [minX, minY, minZ, maxX, maxY, maxZ].
+     */
+    getBoundingBox(): number[] {
+        return this._boundingBox;
+    }
 }

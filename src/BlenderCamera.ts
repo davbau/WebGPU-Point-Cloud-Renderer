@@ -100,6 +100,16 @@ export class BlenderCamera {
         this.calculateViewProjectionMatrix();
         return this.viewProjectionMatrix;
     }
+
+    setSphereCoordinate(radius: number, phi: number, theta: number) {
+        this.sphericalCoordinate = new SphericalCoordinate(radius, phi, theta);
+        this.matricesNeedToBeUpdated = true;
+    }
+
+    setBasePosition(x: number, y: number, z: number) {
+        this.sphericalCoordinate.setCenter(vec3.create(x, y, z));
+        this.matricesNeedToBeUpdated = true;
+    }
 }
 
 class SphericalCoordinate {
@@ -138,6 +148,10 @@ class SphericalCoordinate {
 
     moveCenter(vec: vec3.default) {
         vec3.add(this.centerInWorld, vec, this.centerInWorld);
+    }
+
+    setCenter(vec: vec3.default) {
+        this.centerInWorld = vec;
     }
 
     rotateUpDown(angle: number) {

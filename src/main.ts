@@ -6,6 +6,7 @@ import {create_and_bind_quad_VertexBuffer, quad_vertex_array} from "./quad";
 
 const canvas = document.getElementById("gfx-main") as HTMLCanvasElement;
 const debug_div = document.getElementById("debug") as HTMLElement;
+const resetViewport_button = document.getElementById("btn-resetViewport") as HTMLButtonElement;
 
 const screen_size = vec2.create(canvas.width, canvas.height);
 
@@ -283,6 +284,41 @@ depthBuffer.unmap();
 
 const batchHandler = arrayBufferHandler as BatchHandler;
 
+resetViewport_button.addEventListener("click", resetViewport);
+function resetViewport() {
+    // figure out extent of the model
+    const modelExtent = batchHandler.getTotalModelExtent();
+    console.log(`model extent: ${modelExtent}`);
+
+    // set camera so that the model is in the center of the view
+    let modelCenter = vec3.create(
+        (modelExtent[0] + modelExtent[3]) / 2,
+        (modelExtent[1] + modelExtent[4]) / 2,
+        (modelExtent[2] + modelExtent[5]) / 2,
+    );
+    console.log(`model center: ${modelCenter}`);
+
+    // set camera so that the model is in the view
+    const modelSize = vec3.create(
+        modelExtent[3] - modelExtent[0],
+        modelExtent[4] - modelExtent[1],
+        modelExtent[5] - modelExtent[2],
+    );
+    console.log(`model size: ${modelSize}`);
+
+    // move model center down by half of the model size
+    modelCenter[1] -= modelSize[1];
+    // modelCenter[1] -= 100;
+    console.log(`model center after move: ${modelCenter}`);
+    camera.setBasePosition(modelCenter[0], modelCenter[1], modelCenter[2]);
+
+    const modelSizeMax = Math.max(modelSize[0], modelSize[1], modelSize[2]);
+    const modelSizeMaxHalf = modelSizeMax / 2;
+    const modelSizeMaxHalfTan = modelSizeMaxHalf / Math.tan(camera.fov / 2);
+    const cameraDistance = (modelSizeMaxHalfTan + modelSizeMaxHalf) * 2;
+    console.log(`camera distance: ${cameraDistance}`);
+    camera.setSphereCoordinate(cameraDistance, 90, 0);
+}
 
 async function generateFrame() {
     stats.begin();
@@ -303,7 +339,7 @@ async function generateFrame() {
             continue;
         }
         if (!batch.isOnScreen(mVP)) {
-            console.log(`batch ${batch.getID()} not on screen`);
+            // console.log(`batch ${batch.getID()} not on screen`);
             batches_renderType.push(-1);
             continue;
         } else {
