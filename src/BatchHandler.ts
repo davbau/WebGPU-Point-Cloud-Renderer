@@ -101,7 +101,7 @@ export class BatchHandler extends DataHandler {
     async writeOneBufferToGPU(): Promise<void> {
         for (let b of this._batches) {
             if (b.canBeWrittenToGPU()) {
-                await b.writeDataToGPUBuffer();
+                await b.writeDataToGPUBuffer(true);
                 return;
             }
         }

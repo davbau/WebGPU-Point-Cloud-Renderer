@@ -214,7 +214,7 @@ export class Batch {
         return;
     }
 
-    async writeDataToGPUBuffer() {
+    async writeDataToGPUBuffer(deleteHostBuffer_ifFull: boolean = false) {
         if (this.buffersReadyToWrite && !this.buffersInFlight) {
             // console.log("Writing data to GPU buffer for Batch: ", this._id);
             // console.log("GPU Buffer size: ", this.gpuBuffer_coarse.size);
@@ -226,25 +226,19 @@ export class Batch {
             this._device.queue.writeBuffer(this.gpuBuffer_color, 0, this.hostBuffer_color!.buffer, 0, this.hostBuffer_color!.byteLength);
             this.buffersInFlight = true;
 
-            /*
-            await this._device.queue.onSubmittedWorkDone();
-            this.buffersReadyToWrite = false;
-            this.buffersWrittenToGPU = true;
-            this.buffersInFlight = false;
-            console.log("Finished writing data to GPU buffer for Batch: ", this._id);
-            */
-
-            // /*
             this._device.queue.onSubmittedWorkDone().then(() => {
                 // finished writing to GPU
                 this.buffersReadyToWrite = false;
                 this.buffersWrittenToGPU = true;
                 this.buffersInFlight = false;
                 console.log(`Finished writing ${this.gpuBuffer_coarse.size * 4} bytes of data to GPU buffer for Batch: `, this._id);
+
+                if (deleteHostBuffer_ifFull && this.isFull()) {
+                    this.destroyHostBuffers();
+                }
             }).catch((error) => {
                 console.error("Error writing data to GPU buffer for Batch: ", this._id, error);
             });
-            // */
         }
     }
 
@@ -291,6 +285,7 @@ export class Batch {
         delete this.hostBuffer_medium;
         delete this.hostBuffer_fine;
         delete this.hostBuffer_color;
+        console.log("Deleted host buffers for batch: ", this._id, "\ttotaling", this._bufferSize * 4 * 4 / (1024 ** 2), "MB");
     }
 
     /**
