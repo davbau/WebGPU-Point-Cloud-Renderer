@@ -18,6 +18,7 @@
     "dat.gui": "^0.7.9",
     "html-webpack-plugin": "^5.6.0",
     "http-server": "^14.1.1",
+    "inertial-turntable-camera": "^2.0.4",
     "stats.js": "^0.17.0",
     "ts-shader-loader": "^2.0.2",
     "typescript": "^5.5.3",

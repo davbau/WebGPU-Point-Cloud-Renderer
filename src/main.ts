@@ -245,12 +245,33 @@ const display_renderPassDescriptor = Util.create_display_RenderPassDescriptor(co
 const aspect = canvas.width / canvas.height;
 console.log('aspect: ', aspect);
 
-const camera = new BlenderCamera(Math.PI / 4, aspect, 1, 100);
+// const camera = new BlenderCamera(Math.PI / 4, aspect, 1, 100);
+const camera = require('inertial-turntable-camera')({
+    phi: 0.5,
+    theta: 1,
+    distance: 20,
+});
 
-const inputHandler = new InputHandler(canvas, camera);
+const initialParams = {
+    aspectRatio: aspect,
+    fovY: Math.PI / 4,
+    center: vec3.create(0, 0, 0),
+    phi: 0.5,
+    theta: 1,
+    distance: 20,
+    rotateAboutCenter: true
+}
+camera.tick(initialParams);
+
+console.log('camera: ', camera);
+
+
+// const inputHandler = new InputHandler(canvas, camera);
+const inputHandler = new InputHandlerInertialTurntableCamera(canvas, camera);
 inputHandler.registerInputHandlers();
 
 const modelMatrix = mat4.identity();
+// mat4.rotate(modelMatrix, [1, 0, 1], Math.PI / 4, modelMatrix);
 const mVP = mat4.create();
 
 import Stats from "stats.js";
@@ -263,7 +284,8 @@ import {FileDropHandler} from "./FileDropHandler";
 import {ArrayBufferHandler} from "./ArrayBufferHandler";
 import {GUI} from "dat.gui";
 import {BatchHandler} from "./BatchHandler";
-import {debug} from "node:util";
+import {debug, log} from "node:util";
+import {InputHandlerInertialTurntableCamera} from "./InputHandler-InertialTurntableCamera";
 
 const stats = new Stats();
 stats.showPanel(0);
@@ -272,11 +294,13 @@ document.body.appendChild(stats.dom);
 // camera.update(0, 0, 0);
 
 // mat4.rotate(modelMatrix, [-1, 0, 0], Math.PI / 2, modelMatrix);
-mat4.rotate(modelMatrix, [0, 0, 1], 90 * Math.PI / 180, modelMatrix);
-mat4.rotate(modelMatrix, [0, 1, 0], 180 * Math.PI / 180, modelMatrix);
+
+// mat4.rotate(modelMatrix, [0, 0, 1], 90 * Math.PI / 180, modelMatrix);
+// mat4.rotate(modelMatrix, [0, 1, 0], 180 * Math.PI / 180, modelMatrix);
+
 // mat4.rotate(modelMatrix, [0, 1, 0], 90 * Math.PI / 180, modelMatrix);
 
-mat4.translate(modelMatrix, [-0.5, -0.5, -0.5], modelMatrix);
+// mat4.translate(modelMatrix, [-0.5, -0.5, -0.5], modelMatrix);
 
 const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(0xFFFFFFFF);
 // unmap depth buffer
@@ -285,6 +309,7 @@ depthBuffer.unmap();
 const batchHandler = arrayBufferHandler as BatchHandler;
 
 resetViewport_button.addEventListener("click", resetViewport);
+
 function resetViewport() {
     // figure out extent of the model
     const modelExtent = batchHandler.getTotalModelExtent();
@@ -307,26 +332,39 @@ function resetViewport() {
     console.log(`model size: ${modelSize}`);
 
     // move model center down by half of the model size
-    modelCenter[1] -= modelSize[1];
+    // modelCenter[1] -= modelSize[1];
     // modelCenter[1] -= 100;
+    // vec3.subtract(modelCenter, vec3.mulScalar(modelSize, 1), modelCenter);
     console.log(`model center after move: ${modelCenter}`);
-    camera.setBasePosition(modelCenter[0], modelCenter[1], modelCenter[2]);
+    // camera.setBasePosition(modelCenter[0], modelCenter[1], modelCenter[2]);
+    // camera.params.center = modelCenter;
 
-    const modelSizeMax = Math.max(modelSize[0], modelSize[1], modelSize[2]);
-    const modelSizeMaxHalf = modelSizeMax / 2;
-    const modelSizeMaxHalfTan = modelSizeMaxHalf / Math.tan(camera.fov / 2);
-    const cameraDistance = (modelSizeMaxHalfTan + modelSizeMaxHalf) * 2;
-    console.log(`camera distance: ${cameraDistance}`);
-    camera.setSphereCoordinate(cameraDistance, 90, 0);
+    camera.tick(initialParams);
+    camera.tick({center: modelCenter})
+
+    // const modelSizeMax = Math.max(modelSize[0], modelSize[1], modelSize[2]);
+    // const modelSizeMaxHalf = modelSizeMax / 2;
+    // const modelSizeMaxHalfTan = modelSizeMaxHalf / Math.tan(camera.fov / 2);
+    // const cameraDistance = (modelSizeMaxHalfTan + modelSizeMaxHalf) * 2;
+    // console.log(`camera distance: ${cameraDistance}`);
+    // camera.setSphereCoordinate(cameraDistance, 90, 0);
 }
 
 async function generateFrame() {
     stats.begin();
 
+    camera.tick();
+
     let commandEncoder = device.createCommandEncoder();
 
     // get mVP matrix
-    mat4.multiply(camera.getViewProjectionMatrix(), modelMatrix, mVP);
+    // mat4.multiply(camera.getViewProjectionMatrix(), modelMatrix, mVP);
+    mat4.multiply(camera.state.projection, camera.state.view, mVP);
+    mat4.multiply(mVP, modelMatrix, mVP);
+
+    debug_div.innerText = `vp matrix: ${camera.state.view}
+    mvp matrix: ${mVP},
+    `
 
     // reset depth buffer
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
@@ -461,6 +499,7 @@ async function generateFrame() {
         Batches render type: ${batches_renderType.join("\t")},
         TpW: ${THREADS_PER_WORKGROUP},
         Workgroups: ${xWorkGroups} x ${yWorkGroups} x ${zWorkGroups},
+        vp matrix: ${camera.state.view}
         mvp matrix: ${mVP},
         `;
     }
