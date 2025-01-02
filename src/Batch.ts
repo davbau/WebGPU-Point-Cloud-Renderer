@@ -214,6 +214,11 @@ export class Batch {
         return;
     }
 
+    /**
+     * Write the data of the buffer to the GPU. This function exists so the load of transferring data to the GPU can be spread out over multiple frames.
+     * The host buffer may be destroyed after it is copied to the GPU buffer to save memory.
+     * @param deleteHostBuffer_ifFull If true, the host buffer will be destroyed if it is full.
+     */
     async writeDataToGPUBuffer(deleteHostBuffer_ifFull: boolean = false) {
         if (this.buffersReadyToWrite && !this.buffersInFlight) {
             // console.log("Writing data to GPU buffer for Batch: ", this._id);
@@ -447,6 +452,10 @@ export class Batch {
 
     getID() {
         return this._id;
+    }
+
+    isBufferFull() {
+        return this._filledSize == this.batchSize;
     }
 
     /**
