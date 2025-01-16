@@ -1,6 +1,5 @@
 import {mat4, vec3, vec2} from "webgpu-matrix";
 
-import Camera from "./camera";
 import {Util} from "./util";
 import {create_and_bind_quad_VertexBuffer, quad_vertex_array} from "./quad";
 
@@ -47,7 +46,7 @@ const maxStorageBufferBindingSize = device.limits.maxStorageBufferBindingSize;
 // Region Drag and Drop
 // const BUFFER_HANDLER_SIZE = 65536; // for uniform
 // const BUFFER_HANDLER_SIZE = ((7.5e4)) * SIZE_OF_POINT; // for storage
-const BUFFER_HANDLER_SIZE = ((Math.pow(2, 20))) * SIZE_OF_POINT; // for storage
+const BUFFER_HANDLER_SIZE = ((Math.pow(2, 20))) * SIZE_OF_POINT; // for storage 2^20 is about 1e6
 // const BUFFER_HANDLER_SIZE = 2 * SIZE_OF_POINT;
 
 // const THREADS_PER_WORKGROUP = 32;
@@ -245,16 +244,9 @@ const display_renderPassDescriptor = Util.create_display_RenderPassDescriptor(co
 const aspect = canvas.width / canvas.height;
 console.log('aspect: ', aspect);
 
-// const camera = new BlenderCamera(Math.PI / 4, aspect, 1, 100);
-const camera = require('inertial-turntable-camera')({
-    phi: 0.5,
-    theta: 1,
-    distance: 20,
-});
+const camera = new InertialTurntableCamera(Math.PI / 4, aspect, 1, 100);
 
 const initialParams = {
-    aspectRatio: aspect,
-    fovY: Math.PI / 4,
     center: vec3.create(0, 0, 0),
     phi: 0.5,
     theta: 1,
@@ -263,15 +255,10 @@ const initialParams = {
 }
 camera.tick(initialParams);
 
-console.log('camera: ', camera);
-
-
-// const inputHandler = new InputHandler(canvas, camera);
 const inputHandler = new InputHandlerInertialTurntableCamera(canvas, camera);
 inputHandler.registerInputHandlers();
 
 const modelMatrix = mat4.identity();
-// mat4.rotate(modelMatrix, [1, 0, 1], Math.PI / 4, modelMatrix);
 const mVP = mat4.create();
 
 import Stats from "stats.js";
@@ -286,6 +273,7 @@ import {GUI} from "dat.gui";
 import {BatchHandler} from "./BatchHandler";
 import {debug, log} from "node:util";
 import {InputHandlerInertialTurntableCamera} from "./InputHandler-InertialTurntableCamera";
+import {InertialTurntableCamera} from "./InertialTurntableCamera";
 
 const stats = new Stats();
 stats.showPanel(0);
@@ -359,10 +347,10 @@ async function generateFrame() {
 
     // get mVP matrix
     // mat4.multiply(camera.getViewProjectionMatrix(), modelMatrix, mVP);
-    mat4.multiply(camera.state.projection, camera.state.view, mVP);
+    mat4.multiply(camera.getProjectionMatrix(), camera.getViewMatrix(), mVP);
     mat4.multiply(mVP, modelMatrix, mVP);
 
-    debug_div.innerText = `vp matrix: ${camera.state.view}
+    debug_div.innerText = `vp matrix: ${camera.getViewMatrix()}
     mvp matrix: ${mVP},
     `
 
@@ -499,7 +487,7 @@ async function generateFrame() {
         Batches render type: ${batches_renderType.join("\t")},
         TpW: ${THREADS_PER_WORKGROUP},
         Workgroups: ${xWorkGroups} x ${yWorkGroups} x ${zWorkGroups},
-        vp matrix: ${camera.state.view}
+        vp matrix: ${camera.getViewMatrix()}
         mvp matrix: ${mVP},
         `;
     }
