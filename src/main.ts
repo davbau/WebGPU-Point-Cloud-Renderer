@@ -345,6 +345,8 @@ async function generateFrame() {
 
     let commandEncoder = device.createCommandEncoder();
 
+    // camera.zoom(0, 0, 0.001);
+
     // get mVP matrix
     // mat4.multiply(camera.getViewProjectionMatrix(), modelMatrix, mVP);
     mat4.multiply(camera.getProjectionMatrix(), camera.getViewMatrix(), mVP);
