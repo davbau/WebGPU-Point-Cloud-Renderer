@@ -151,6 +151,12 @@ export class Batch {
 
         const boxSize = this.getBoxSize();
         const origin = this.getOrigin();
+
+        // print the bounding box
+        // console.log("Bounding box: ", this._boundingBox);
+        // console.log("Size: ", boxSize);
+        // console.log("Origin: ", origin);
+
         // unit32 max value
         // const factor = 2 ** 32 - 1;
         const factor = 2 ** 30; // 0b0100_0000_0000_0000_0000_0000_0000_0000

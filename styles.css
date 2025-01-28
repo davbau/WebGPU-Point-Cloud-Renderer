@@ -1,0 +1,54 @@
+/* Hover in the center of the screen above everything */
+#compatibility_check {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 9999;
+    background-color: red;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    display: none;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    height: 100%;
+}
+
+#container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+canvas {
+    display: block;
+    margin: 0 auto;
+    width: 100%;
+    height: 100%;
+}
+
+/* bottom right with white color and text aligned to right */
+#debug {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    text-align: right;
+}
+
+#btn-resetViewport {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    cursor: pointer;
+}

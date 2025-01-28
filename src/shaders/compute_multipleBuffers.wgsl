@@ -97,6 +97,7 @@ fn main(
     // uint32_t
     // testing with red
 //    atomicAdd(&frameBuffer[index * 4 + 0], 0xff); // r
+//    color = 0xffffffff;
     atomicAdd(&frameBuffer[index * 4 + 0], (color >> 16) & 0xFF); // r
     atomicAdd(&frameBuffer[index * 4 + 1], (color >> 8) & 0xFF); // g
     atomicAdd(&frameBuffer[index * 4 + 2], (color >> 0) & 0xFF); // b

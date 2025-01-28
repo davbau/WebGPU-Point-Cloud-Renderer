@@ -43,7 +43,7 @@ export class InputHandlerInertialTurntableCamera {
     }
 
     handleScroll(event: WheelEvent) {
-        this.camera.zoom(0, 0, -event.deltaY / 10000);
+        this.camera.zoom(0, 0, event.deltaY / 10000);
         event.preventDefault();
     }
 }

@@ -4,10 +4,13 @@ import {Util} from "./util";
 import {create_and_bind_quad_VertexBuffer, quad_vertex_array} from "./quad";
 
 const canvas = document.getElementById("gfx-main") as HTMLCanvasElement;
+// // set max size of canvas
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 const debug_div = document.getElementById("debug") as HTMLElement;
 const resetViewport_button = document.getElementById("btn-resetViewport") as HTMLButtonElement;
 
-const screen_size = vec2.create(canvas.width, canvas.height);
+let screen_size = vec2.create(canvas.width, canvas.height);
 
 const requestAdapterOptions = {
     powerPreference: 'high-performance',
@@ -118,14 +121,14 @@ displayPipelineDescriptor.primitive = {topology: 'triangle-strip'};
 const displayPipeline = device.createRenderPipeline(displayPipelineDescriptor);
 
 // Region Framebuffer
-const framebuffer = device.createBuffer({
+let framebuffer = device.createBuffer({
     label: "framebuffer",
     size: canvas.width * canvas.height * 4 * Float32Array.BYTES_PER_ELEMENT,
     usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     mappedAtCreation: false,
 });
 
-const depthBuffer = device.createBuffer({
+let depthBuffer = device.createBuffer({
     label: "depth buffer",
     size: canvas.width * canvas.height * Float32Array.BYTES_PER_ELEMENT,
     usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
@@ -241,19 +244,29 @@ const display_shader_bindGroup = device.createBindGroup({
 const display_renderPassDescriptor = Util.create_display_RenderPassDescriptor(context, [0, 0, 0, 1]);
 
 // Region frame
-const aspect = canvas.width / canvas.height;
+const observer = new ResizeObserver(entries => {
+    for (const entry of entries) {
+        const width = entry.contentBoxSize[0].inlineSize;
+        const height = entry.contentBoxSize[0].blockSize;
+        // const canvas = entry.target as HTMLCanvasElement;
+
+        // clamp the size to the device limits
+        canvas.width = Math.max(1, Math.min(width, device.limits.maxTextureDimension2D));
+        canvas.height = Math.max(1, Math.min(height, device.limits.maxTextureDimension2D));
+
+        // update the aspect ratio and screen size for rendering
+        aspect = canvas.width / canvas.height;
+        screen_size = vec2.create(canvas.width, canvas.height);
+
+        // update the camera aspect
+        camera.resize(aspect);
+    }
+});
+observer.observe(canvas);
+let aspect = canvas.width / canvas.height;
 console.log('aspect: ', aspect);
 
 const camera = new InertialTurntableCamera(Math.PI / 4, aspect, 1, 100);
-
-const initialParams = {
-    center: vec3.create(0, 0, 0),
-    phi: 0.5,
-    theta: 1,
-    distance: 20,
-    rotateAboutCenter: true
-}
-camera.tick(initialParams);
 
 const inputHandler = new InputHandlerInertialTurntableCamera(canvas, camera);
 inputHandler.registerInputHandlers();
@@ -317,25 +330,30 @@ function resetViewport() {
         modelExtent[4] - modelExtent[1],
         modelExtent[5] - modelExtent[2],
     );
-    console.log(`model size: ${modelSize}`);
 
-    // move model center down by half of the model size
-    // modelCenter[1] -= modelSize[1];
-    // modelCenter[1] -= 100;
-    // vec3.subtract(modelCenter, vec3.mulScalar(modelSize, 1), modelCenter);
-    console.log(`model center after move: ${modelCenter}`);
-    // camera.setBasePosition(modelCenter[0], modelCenter[1], modelCenter[2]);
-    // camera.params.center = modelCenter;
+    const modelSizeMax = Math.max(modelSize[0], modelSize[1], modelSize[2]);
+    const modelSizeMin = Math.min(modelSize[0], modelSize[1], modelSize[2]);
 
-    camera.tick(initialParams);
-    camera.tick({center: modelCenter})
+    console.log(`modelSizeMax: ${modelSizeMax}, modelSizeMin: ${modelSizeMin}`);
 
-    // const modelSizeMax = Math.max(modelSize[0], modelSize[1], modelSize[2]);
-    // const modelSizeMaxHalf = modelSizeMax / 2;
-    // const modelSizeMaxHalfTan = modelSizeMaxHalf / Math.tan(camera.fov / 2);
-    // const cameraDistance = (modelSizeMaxHalfTan + modelSizeMaxHalf) * 2;
-    // console.log(`camera distance: ${cameraDistance}`);
-    // camera.setSphereCoordinate(cameraDistance, 90, 0);
+    // const distance = modelSizeMax / Math.tan(camera.fov / 2);
+    const fovX = camera.fov * camera.aspect;
+    // technically it would be correct to divide modelSizeMax by 2 because the calculation uses a right angle triangle,
+    // however it looks better if the model is in the center of the view occupying half of the view instead of the whole view.
+    const distance = (modelSizeMax / 1) / Math.tan(fovX / 2);
+
+    console.log(`Center: ${modelCenter}, Distance: ${distance}`);
+
+    camera.reset();
+    camera.tick({
+        center: modelCenter,
+        // distance: distance,
+    });
+    camera.tick({
+        distance: distance,
+    })
+
+    console.log("camera: ", camera.getParams());
 }
 
 async function generateFrame() {
@@ -396,8 +414,7 @@ async function generateFrame() {
         // console.log(`batch.getOrigin() of batch ${batch.getID()}: `, batch.getOrigin());
         // console.log(`batch.getBoxSize() of batch ${batch.getID()}: `, batch.getBoxSize());
         const uniform_data = new Float32Array([
-            screen_size[0], screen_size[1],
-            0, 0, // padding
+            screen_size[0], screen_size[1], 0, 0, // padding
             ...mVP,
             ...batch.getOrigin(), 0,
             ...batch.getBoxSize(), 0,

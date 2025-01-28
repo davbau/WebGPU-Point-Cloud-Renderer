@@ -5,22 +5,19 @@
     <meta name="viewport"
           content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Test</title>
+    <link rel="stylesheet" href="./styles.css">
+    <title>Point Cloud Renderer</title>
 </head>
 <body>
 <div id="container">
     <h1 id="compatibility_check"></h1>
-    <canvas id="gfx-main" width="1200" height="800"></canvas>
+    <div id="debug"></div>
 
-    <div id="debug">
+    <canvas id="gfx-main"></canvas>
 
-    </div>
-
-    <div>
-        <button type="submit" id="btn-resetViewport">
-            Reset Viewport
-        </button>
-    </div>
+    <button type="submit" id="btn-resetViewport">
+        Reset Viewport
+    </button>
 </div>
 <!-- Points to correct location after compile -->
 <script src="./bundle.js"></script>
