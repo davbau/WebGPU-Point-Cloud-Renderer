@@ -1,7 +1,20 @@
-import {mat4, vec3, vec2} from "webgpu-matrix";
+import {mat4, vec2, vec3} from "webgpu-matrix";
 
 import {Util} from "./util";
-import {create_and_bind_quad_VertexBuffer, quad_vertex_array} from "./quad";
+import {create_and_bind_quad_VertexBuffer} from "./quad";
+// Region pipeline
+// import compute_shader from "./shaders/compute.wgsl";
+import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
+// import compute_depth_shader from "./shaders/compute_depth_shader.wgsl";
+import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
+import display_shader from "./shaders/display_on_screan.wgsl";
+import Stats from "stats.js";
+import {SIZE_OF_POINT} from "./types/c_equivalents";
+import {FileDropHandler} from "./FileDropHandler";
+import {GUI} from "dat.gui";
+import {BatchHandler} from "./BatchHandler";
+import {InputHandlerInertialTurntableCamera} from "./InputHandler-InertialTurntableCamera";
+import {InertialTurntableCamera} from "./InertialTurntableCamera";
 
 const canvas = document.getElementById("gfx-main") as HTMLCanvasElement;
 // // set max size of canvas
@@ -74,10 +87,6 @@ gui.add(params, 'renderQuality', ['auto', 'coarse', "medium", "fine"]);
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
 
-// Region pipeline
-// import compute_shader from "./shaders/compute.wgsl";
-import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
-
 const computeShaderModule = device.createShaderModule({
     label: "compute shader module",
     code: compute_shader
@@ -92,9 +101,6 @@ const computePipeline = device.createComputePipeline({
 });
 
 
-// import compute_depth_shader from "./shaders/compute_depth_shader.wgsl";
-import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
-
 const compute_depth_shaderModule = device.createShaderModule({
     label: "compute depth shader module",
     code: compute_depth_shader,
@@ -108,8 +114,6 @@ const compute_depth_pipeline = device.createComputePipeline({
     }
 })
 
-
-import display_shader from "./shaders/display_on_screan.wgsl";
 
 const display_shaderModule = device.createShaderModule({
     label: "display shader module",
@@ -158,37 +162,8 @@ const debug_uniformBuffer = device.createBuffer({
         + 4 * Float32Array.BYTES_PER_ELEMENT,   // render type
     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
 });
-// new Float32Array(depthBuffer.getMappedRange()).fill(0xFFFFFFFF);
-// depthBuffer.unmap();
-// Region Storage Buffer
 
-// max number of points is 2^16 - 1
-// const points = createRandomPoints(NUMBER_OF_POINTS);
-// const pointsArr = convertPointsToArrayBuffer(createDepthBufferTest(NUMBER_OF_POINTS));
-// const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(BUFFER_HANDLER_SIZE / 16));
-
-// const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(5e7));
-// const cubePointsArr = convertPointsToArrayBuffer(createRandomPoints(1e6));
-
-// const pointsArr = convertPointsToArrayBuffer(las_points_as_points);
-// const pointsArr = await lassLoader.loadLASPointsAsBuffer(file_path, las_header);
-// let pointsArr = new ArrayBuffer(maxStorageBufferBindingSize); // 16 is the minimum binding size
-// let pointsArr = new ArrayBuffer(arrayBufferHandler.getBufferSize()); // 16 is the minimum binding size
-
-// let numberOfPoints = pointsArr.byteLength / (4 * Float32Array.BYTES_PER_ELEMENT);
-// let numberOfPoints = 1;
-// let pointsOverWorkgroups = 0;
-// if (pointsArr.byteLength != 0) {
-//     pointsOverWorkgroups = getPointsOverWorkgroups(numberOfPoints);
-// }
 let numberOfPoints = 0;
-
-function getPointsOverWorkgroups(numberOfPoints: number) {
-    if (numberOfPoints == 0) {
-        return 0;
-    }
-    return (numberOfPoints) / Math.min(numberOfPoints, maxWorkgroupsPerDimension);
-}
 
 // const STAGING_BUFFER_SIZE = 1e6 * SIZE_OF_POINT;
 const STAGING_BUFFER_SIZE = arrayBufferHandler.getBufferSize();
@@ -274,34 +249,9 @@ inputHandler.registerInputHandlers();
 const modelMatrix = mat4.identity();
 const mVP = mat4.create();
 
-import Stats from "stats.js";
-import {FPSCamera} from "./FPSCamera";
-import {Point, SIZE_OF_POINT, u_int32} from "./types/c_equivalents";
-
-import {InputHandler} from "./InputHandler";
-import {BlenderCamera} from "./BlenderCamera";
-import {FileDropHandler} from "./FileDropHandler";
-import {ArrayBufferHandler} from "./ArrayBufferHandler";
-import {GUI} from "dat.gui";
-import {BatchHandler} from "./BatchHandler";
-import {debug, log} from "node:util";
-import {InputHandlerInertialTurntableCamera} from "./InputHandler-InertialTurntableCamera";
-import {InertialTurntableCamera} from "./InertialTurntableCamera";
-
 const stats = new Stats();
 stats.showPanel(0);
 document.body.appendChild(stats.dom);
-
-// camera.update(0, 0, 0);
-
-// mat4.rotate(modelMatrix, [-1, 0, 0], Math.PI / 2, modelMatrix);
-
-// mat4.rotate(modelMatrix, [0, 0, 1], 90 * Math.PI / 180, modelMatrix);
-// mat4.rotate(modelMatrix, [0, 1, 0], 180 * Math.PI / 180, modelMatrix);
-
-// mat4.rotate(modelMatrix, [0, 1, 0], 90 * Math.PI / 180, modelMatrix);
-
-// mat4.translate(modelMatrix, [-0.5, -0.5, -0.5], modelMatrix);
 
 const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(0xFFFFFFFF);
 // unmap depth buffer

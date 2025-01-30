@@ -90,8 +90,7 @@ export class BatchHandler extends DataHandler {
             const wait = currentBatch.loadData(dataToWrite);
 
             remainingData = remainingData.slice(remainingSpace);
-
-            if (remainingData.byteLength > 0) {
+           if (remainingData.byteLength > 0) {
                 this.addBatch();
             }
             await wait;
