@@ -2,12 +2,6 @@ import {mat4, vec2, vec3} from "webgpu-matrix";
 
 import {Util} from "./util";
 import {create_and_bind_quad_VertexBuffer} from "./quad";
-// Region pipeline
-// import compute_shader from "./shaders/compute.wgsl";
-import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
-// import compute_depth_shader from "./shaders/compute_depth_shader.wgsl";
-import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
-import display_shader from "./shaders/display_on_screan.wgsl";
 import Stats from "stats.js";
 import {SIZE_OF_POINT} from "./types/c_equivalents";
 import {FileDropHandler} from "./FileDropHandler";
@@ -21,7 +15,6 @@ const canvas = document.getElementById("gfx-main") as HTMLCanvasElement;
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 const debug_div = document.getElementById("debug") as HTMLElement;
-const resetViewport_button = document.getElementById("btn-resetViewport") as HTMLButtonElement;
 
 let screen_size = vec2.create(canvas.width, canvas.height);
 
@@ -83,14 +76,18 @@ const params: {
     renderQuality: 'auto',
 };
 gui.add(params, 'renderQuality', ['auto', 'coarse', "medium", "fine"]);
+gui.add({resetViewport: resetViewport}, 'resetViewport');
 
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
 
+// Region pipeline
+import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
 const computeShaderModule = device.createShaderModule({
     label: "compute shader module",
     code: compute_shader
 });
+
 const computePipeline = device.createComputePipeline({
     label: "compute pipeline",
     layout: 'auto',
@@ -101,6 +98,7 @@ const computePipeline = device.createComputePipeline({
 });
 
 
+import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
 const compute_depth_shaderModule = device.createShaderModule({
     label: "compute depth shader module",
     code: compute_depth_shader,
@@ -114,7 +112,7 @@ const compute_depth_pipeline = device.createComputePipeline({
     }
 })
 
-
+import display_shader from "./shaders/display_on_screan.wgsl";
 const display_shaderModule = device.createShaderModule({
     label: "display shader module",
     code: display_shader
@@ -172,6 +170,7 @@ const stagingBuffer = device.createBuffer({
     usage: GPUBufferUsage.MAP_WRITE |
         GPUBufferUsage.COPY_SRC,
 });
+// End Region Debug Buffers
 
 // Region Uniform
 const uniformBuffer = device.createBuffer({
@@ -258,8 +257,6 @@ const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(
 depthBuffer.unmap();
 
 const batchHandler = arrayBufferHandler as BatchHandler;
-
-resetViewport_button.addEventListener("click", resetViewport);
 
 function resetViewport() {
     // figure out extent of the model
