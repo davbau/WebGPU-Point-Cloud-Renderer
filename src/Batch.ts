@@ -103,7 +103,7 @@ export class Batch {
         this.buffersInFlight = false;
         this.buffersWrittenToGPU = false;
 
-        const b0 = 2 ** 16;
+        const b0 = Infinity;
         this._boundingBox = [b0, b0, b0, -b0, -b0, -b0];
         this._size = [0, 0, 0];
         this._filledSize = 0;

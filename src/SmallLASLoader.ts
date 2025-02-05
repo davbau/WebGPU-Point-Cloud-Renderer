@@ -221,29 +221,6 @@ export class SmallLASLoader {
         let y = dataView.getInt32(read_offset + 4, true) * header.yScaleFactor + header.yOffset;
         let z = dataView.getInt32(read_offset + 8, true) * header.zScaleFactor + header.zOffset;
 
-        // SmallLASLoader.minX = Math.min(SmallLASLoader.minX, x);
-        // SmallLASLoader.minY = Math.min(SmallLASLoader.minY, y);
-        // SmallLASLoader.minZ = Math.min(SmallLASLoader.minZ, z);
-        // SmallLASLoader.maxX = Math.max(SmallLASLoader.maxX, x);
-        // SmallLASLoader.maxY = Math.max(SmallLASLoader.maxY, y);
-        // SmallLASLoader.maxZ = Math.max(SmallLASLoader.maxZ, z);
-
-        // use max and min extent to normalize
-        // x = (x - header.minX) / (header.maxX - header.minX);
-        // y = (y - header.minY) / (header.maxY - header.minY);
-        // z = (z - header.minZ) / (header.maxZ - header.minZ);
-
-        // use max and min extent to normalize inside 0-1 box but keep original aspect ratio
-        let max_range = Math.max(header.maxX - header.minX, header.maxY - header.minY, header.maxZ - header.minZ);
-        // x = (x - header.minX) / max_range * 100.0;
-        // y = (y - header.minY) / max_range * 100.0;
-        // z = (z - header.minZ) / max_range * 100.0;
-        x = (x - header.minX);
-        y = (y - header.minY);
-        z = (z - header.minZ);
-
-        // use max to normalise inside 0-1000 box but keep original aspect ratio and respect position
-
         let R = this.colorTo256(dataView.getUint16(read_offset + rgbOffset + 0, true));
         let G = this.colorTo256(dataView.getUint16(read_offset + rgbOffset + 2, true));
         let B = this.colorTo256(dataView.getUint16(read_offset + rgbOffset + 4, true));

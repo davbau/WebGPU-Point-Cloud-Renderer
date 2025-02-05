@@ -76,7 +76,7 @@ const params: {
     renderQuality: 'auto',
 };
 gui.add(params, 'renderQuality', ['auto', 'coarse', "medium", "fine"]);
-gui.add({resetViewport: resetViewport}, 'resetViewport');
+gui.add({view_to_model: resetViewport}, 'view_to_model');
 
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
