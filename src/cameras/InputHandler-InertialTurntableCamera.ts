@@ -1,7 +1,9 @@
 import {InertialTurntableCamera} from "./InertialTurntableCamera";
 
+/**
+ * Input Event handler that controls a {@link InertialTurntableCamera} instance.
+ */
 export class InputHandlerInertialTurntableCamera {
-
     canvas: HTMLCanvasElement;
     camera: InertialTurntableCamera;
 
@@ -12,7 +14,7 @@ export class InputHandlerInertialTurntableCamera {
     /**
      * Creates an input handler for moving the camera. The camera is assumed to be an InertialTurntableCamera.
      * @param canvas The HTMLCanvas element that webGPU draws to.
-     * @param camera The InertialTurntableCamera object that is used as the camera for WebGPU.
+     * @param camera The {@link InertialTurntableCamera} instance that is used as the camera for WebGPU.
      */
     constructor(canvas: HTMLCanvasElement, camera: any) {
         this.canvas = canvas;

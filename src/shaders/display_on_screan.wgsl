@@ -14,7 +14,6 @@ struct Uniforms {
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-//@group(0) @binding(1) var<storage, read> inputBuffer: array<vec4<f32>>;
 @group(0) @binding(1) var<storage, read_write> inputBuffer: array<atomic<u32>>;
 
 @vertex
@@ -35,14 +34,15 @@ fn fs_main(f: Fragment) -> @location(0) vec4<f32> {
 
     let index = screen_y * u32(width) + screen_x;
 
+    // load the aggregate color values.
     let r = atomicLoad(&inputBuffer[index * 4 + 0]);
     let g = atomicLoad(&inputBuffer[index * 4 + 1]);
     let b = atomicLoad(&inputBuffer[index * 4 + 2]);
+    // The alpha channel holds the number of points that contributed to the pixel.
     let a = atomicLoad(&inputBuffer[index * 4 + 3]);
 
-    // Compute average color
-    let divider = f32(a) * 255;
-//    let divider = 255.0;
+    // Compute average color using the accumulated values and the number of points.
+    let divider = f32(a) * 255.0;
     let color = vec4<f32>(
         f32(r) / divider,
         f32(g) / divider,
@@ -51,4 +51,4 @@ fn fs_main(f: Fragment) -> @location(0) vec4<f32> {
     );
 
     return color;
-}   // Compute threshold
+}

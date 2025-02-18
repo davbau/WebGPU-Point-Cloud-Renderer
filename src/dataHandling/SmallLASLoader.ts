@@ -1,4 +1,4 @@
-import {double, Point, u_char, u_long, u_long_long, u_short} from "./types/c_equivalents";
+import {double, Point, u_char, u_long, u_long_long, u_short} from "../types/c_equivalents";
 import LasWorker from "worker-loader!./LasLoaderWebWorker.worker.ts";
 
 export const LAS_FILE_ENDINGS = [
@@ -6,6 +6,9 @@ export const LAS_FILE_ENDINGS = [
     ".LAS"
 ];
 
+/**
+ * Holder for the types needed in the LAS file format header.
+ */
 export type LASHeader_small = {
     versionMajor: u_char;
     versionMinor: u_char;
@@ -34,27 +37,30 @@ export type LASHeader_small = {
     numberOfExtendedVariableLengthRecords: u_long;
 }
 
+/**
+ * Holder for the information needed in a LAS point. This is not the complete standard by far. For more possible fields see the LAS standard or the comment below.
+ */
 export type LASPoint = {
     x: double;
     y: double;
     z: double;
-    // We don't care about these.
-    /*
-    intensity: u_char;
-    returnNumber: u_char;
-    numberOfReturns: u_char;
-    scanDirectionFlag: u_char;
-    edgeOfFlightLine: u_char;
-    classification: u_char;
-    scanAngleRank: u_char;
-    userData: u_char;
-    pointSourceID: u_short;
-    gpsTime: double;
-     */
     red: u_short;
     green: u_short;
     blue: u_short;
 }
+// Other fields:
+/*
+intensity: u_char;
+returnNumber: u_char;
+numberOfReturns: u_char;
+scanDirectionFlag: u_char;
+edgeOfFlightLine: u_char;
+classification: u_char;
+scanAngleRank: u_char;
+userData: u_char;
+pointSourceID: u_short;
+gpsTime: double;
+ */
 
 export class SmallLASLoader {
     async loadLASHeader(file_path: string): Promise<LASHeader_small> {
@@ -101,6 +107,10 @@ export class SmallLASLoader {
         return header;
     }
 
+    /**
+     * Reads the header information of a LAS file and returns it as a {@link LASHeader_small} object.
+     * @param file
+     */
     async loadLasHeader(file: File): Promise<LASHeader_small> {
         const buffer = await file.arrayBuffer();
         const dataView = new DataView(buffer);
@@ -167,6 +177,12 @@ export class SmallLASLoader {
         return points;
     }
 
+    /**
+     * Loads the points of a LAS file into a large {@link ArrayBuffer}.
+     * @param file_path the path of the file to load.
+     * @param header the header of the file. Needs to be loaded before.
+     * @param max_points the maximum number of points to load. Default is 1e12.
+     */
     async loadLASPointsAsBuffer(file_path: string, header: LASHeader_small, max_points: number = 1e12): Promise<ArrayBuffer> {
         const response = await fetch(file_path);
         const buffer = await response.arrayBuffer();
@@ -174,19 +190,33 @@ export class SmallLASLoader {
         return this.loadLasPointsAsBufferHelper(buffer, header, max_points);
     }
 
-    async loadLasPointsAsBuffer(file: File, header: LASHeader_small, max_points: number = 1e12): Promise<ArrayBuffer> {
+    /**
+     * Loads the points of a LAS file into a large {@link ArrayBuffer}.
+     * @param file the file to load.
+     * @param header the header of the file. Needs to be loaded before.
+     * @param max_points the maximum number of points to load. Default is 1e12.
+     */
+    async loadLasPointsAsBuffer(file: File, header: LASHeader_small, max_points: number = 1e12): Promise<ArrayBuffer> { // Promise<Promise<ArrayBuffer>> gets flattened by JavaScript automatically -> Only Promise<ArrayBuffer>.
         const buffer = await file.arrayBuffer();
 
         return this.loadLasPointsAsBufferHelper(buffer, header, max_points);
-        // return this.loadLasPointsAsBufferHelperViaWorker(buffer, header, max_points); // Promise<Promise<ArrayBuffer>> gets flattened by JavaScript automatically -> Only Promise<ArrayBuffer>.
+        // return this.loadLasPointsAsBufferHelperViaWorker(buffer, header, max_points);
     }
 
+    /**
+     * Loads the points of a LAS file into a large {@link ArrayBuffer}.
+     * @param buffer the buffer of the file to load.
+     * @param header the header of the file. Needs to be loaded before.
+     * @param max_points the maximum number of points to load. Default is 1e12.
+     * @private
+     */
     private loadLasPointsAsBufferHelper(buffer: ArrayBuffer, header: LASHeader_small, max_points: number = 1e12) {
         const dataView = new DataView(buffer);
 
+        // The number of points skipped in each iteration. This can be done when working with very large models.
         const skipper = 1;
 
-        //
+        // TODO link to markus' project
         let rgbOffset = 0;
         if (header.pointDataFormatID === 2) rgbOffset = 20;
         if (header.pointDataFormatID === 3) rgbOffset = 28;
@@ -200,22 +230,22 @@ export class SmallLASLoader {
         const pointView = new DataView(pointBuffer);
 
         for (let i = 0; i < Math.min(numberOfPoints_int, max_points); i += skipper) {
-            this.omg(header, dataView, pointView, i, skipper, rgbOffset);
+            this.handleOnePoint(header, dataView, pointView, i, skipper, rgbOffset);
         }
-
-        console.log(`Extents found after model load: mX: ${SmallLASLoader.minX}, mY: ${SmallLASLoader.minY}, mZ: ${SmallLASLoader.minZ}, MX: ${SmallLASLoader.maxX}, MY: ${SmallLASLoader.maxY}, MZ: ${SmallLASLoader.maxZ}`);
 
         return pointBuffer;
     }
 
-    static minX = Infinity;
-    static minY = Infinity;
-    static minZ = Infinity;
-    static maxX = -Infinity;
-    static maxY = -Infinity;
-    static maxZ = -Infinity;
-
-    async omg(header: LASHeader_small, dataView: DataView, pointView: DataView, i: number, skipper: number, rgbOffset: number) {
+    /**
+     * Handles one point of a LAS file and writes it into the point buffer.
+     * @param header the header of the LAS file.
+     * @param dataView A {@link DataView} into the LAS file to be loaded
+     * @param pointView A {@link DataView} into the point buffer to write the point into.
+     * @param i the index of the point to load.
+     * @param skipper the number of points skipped in each iteration.
+     * @param rgbOffset the offset of the RGB values in the LAS file.
+     */
+    async handleOnePoint(header: LASHeader_small, dataView: DataView, pointView: DataView, i: number, skipper: number, rgbOffset: number) {
         const read_offset = header.offsetToPointData + i * header.pointDataRecordLength;
         let x = dataView.getInt32(read_offset + 0, true) * header.xScaleFactor + header.xOffset;
         let y = dataView.getInt32(read_offset + 4, true) * header.yScaleFactor + header.yOffset;
@@ -236,9 +266,15 @@ export class SmallLASLoader {
         pointView.setUint32(writeOffset + 12, r << 16 | g << 8 | b, true);
     }
 
+    /**
+     * Loads the las points as a list of {@link Point} objects. Can be useful for debugging.
+     * @param file_path
+     * @param header
+     * @param max_points
+     * @deprecated
+     */
     async loadLasPointsAsPoints(file_path: string, header: LASHeader_small, max_points: number = 1e12): Promise<Point[]> {
         const response = await fetch(file_path);
-        // const buffer = await response.arrayBuffer();
 
         //
         let rgbOffset = 0;
@@ -248,40 +284,28 @@ export class SmallLASLoader {
         if (header.pointDataFormatID === 7) rgbOffset = 30;
 
         const numberOfPoints_int = Number(header.numberOfPointRecords);
-        // const points = new Float32Array(numberOfPoints_int * (4));
         const points: Point[] = [];
 
-        // const buffer = new ArrayBuffer(numberOfPoints_int * header.pointDataRecordLength);
         const buffer = await response.arrayBuffer();
         const dataView = new DataView(buffer);
 
-        // const offset = header.offsetToPointData;
-        // const handle = await fsp.open(file_path, 'r');
+        // add points in corners for debugging
+        // points.push({x: 0, y: 0, z: 0, color: 0xff0000});
+        // points.push({x: 1, y: 0, z: 0, color: 0xff0000});
+        // points.push({x: 0, y: 1, z: 0, color: 0xff0000});
+        // points.push({x: 1, y: 1, z: 0, color: 0xff0000});
+        //
+        // points.push({x: 0, y: 0, z: 1, color: 0xff0000});
+        // points.push({x: 1, y: 0, z: 1, color: 0xff0000});
+        // points.push({x: 0, y: 1, z: 1, color: 0xff0000});
+        // points.push({x: 1, y: 1, z: 1, color: 0xff0000});
 
-        // await handle.read(buffer, 0, header.headerSize, 0);
-
-        // add points in corners
-        points.push({x: 0, y: 0, z: 0, color: 0xff0000});
-        points.push({x: 1, y: 0, z: 0, color: 0xff0000});
-        points.push({x: 0, y: 1, z: 0, color: 0xff0000});
-        points.push({x: 1, y: 1, z: 0, color: 0xff0000});
-
-        points.push({x: 0, y: 0, z: 1, color: 0xff0000});
-        points.push({x: 1, y: 0, z: 1, color: 0xff0000});
-        points.push({x: 0, y: 1, z: 1, color: 0xff0000});
-        points.push({x: 1, y: 1, z: 1, color: 0xff0000});
-
-        // Currently only taking every 500th point to reduce data size during development
-        for (let i = 0; i < Math.min(numberOfPoints_int, max_points); i += 500) {
+        for (let i = 0; i < Math.min(numberOfPoints_int, max_points); i += 1) {
             const offset = header.offsetToPointData + i * header.pointDataRecordLength;
             let X = dataView.getInt32(offset + 0, true);
             let Y = dataView.getInt32(offset + 4, true);
             let Z = dataView.getInt32(offset + 8, true);
 
-
-            // let x = X * header.xScaleFactor + header.xOffset - header.minX;
-            // let y = Y * header.yScaleFactor + header.yOffset - header.minY;
-            // let z = Z * header.zScaleFactor + header.zOffset - header.minZ;
             let x = X * header.xScaleFactor + header.xOffset;
             let y = Y * header.yScaleFactor + header.yOffset;
             let z = Z * header.zScaleFactor + header.zOffset;
@@ -311,8 +335,13 @@ export class SmallLASLoader {
         return points;
     }
 
-    // Your main thread
-
+    /**
+     * Loads the las points using a web worker. This is not used in the current implementation. See LasLoaderWebWorker.worker.ts for the worker implementation.
+     * @param buffer
+     * @param header
+     * @param max_points
+     * @private
+     */
     private async loadLasPointsAsBufferHelperViaWorker(buffer: ArrayBuffer, header: LASHeader_small, max_points: number = 1e12): Promise<ArrayBuffer> {
         return new Promise((resolve, reject) => {
             const worker = new Worker(new URL('./LasLoaderWebWorker.worker.ts', import.meta.url));
@@ -338,6 +367,11 @@ export class SmallLASLoader {
         });
     }
 
+    /**
+     * Converts a color value to a 256 value. Sometimes the color values are stored as 16 bit values, then they are divided by 256.
+     * @param color the color value to convert.
+     * @private
+     */
     private colorTo256(color: u_short): number {
         return Math.floor(color > 255 ? color / 256 : color);
     }

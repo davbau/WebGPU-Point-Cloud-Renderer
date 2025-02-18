@@ -1,14 +1,14 @@
 import {mat4, vec2, vec3} from "webgpu-matrix";
 
-import {Util} from "./util";
-import {create_and_bind_quad_VertexBuffer} from "./quad";
+import {Util} from "./utils/util";
+import {create_and_bind_quad_VertexBuffer} from "./utils/quad";
 import Stats from "stats.js";
 import {SIZE_OF_POINT} from "./types/c_equivalents";
-import {FileDropHandler} from "./FileDropHandler";
+import {FileDropHandler} from "./dataHandling/FileDropHandler";
 import {GUI} from "dat.gui";
-import {BatchHandler} from "./BatchHandler";
-import {InputHandlerInertialTurntableCamera} from "./InputHandler-InertialTurntableCamera";
-import {InertialTurntableCamera} from "./InertialTurntableCamera";
+import {BatchHandler} from "./dataHandling/BatchHandler";
+import {InputHandlerInertialTurntableCamera} from "./cameras/InputHandler-InertialTurntableCamera";
+import {InertialTurntableCamera} from "./cameras/InertialTurntableCamera";
 
 const canvas = document.getElementById("gfx-main") as HTMLCanvasElement;
 // // set max size of canvas
@@ -16,7 +16,12 @@ canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 const debug_div = document.getElementById("debug") as HTMLElement;
 
-let screen_size = vec2.create(canvas.width, canvas.height);
+/**
+ * The screen size used to calculate the aspect ratio of the camera.
+ * This can change during runtime. The change is handled by the observer function {@link observer}.
+ * @type {vec2.default}
+ */
+let screen_size: vec2.default = vec2.create(canvas.width, canvas.height);
 
 const requestAdapterOptions = {
     powerPreference: 'high-performance',
@@ -53,19 +58,13 @@ const maxWorkgroupsPerDimension = device.limits.maxComputeWorkgroupsPerDimension
 const maxStorageBufferBindingSize = device.limits.maxStorageBufferBindingSize;
 
 // Region Drag and Drop
-// const BUFFER_HANDLER_SIZE = 65536; // for uniform
-// const BUFFER_HANDLER_SIZE = ((7.5e4)) * SIZE_OF_POINT; // for storage
 const BUFFER_HANDLER_SIZE = ((Math.pow(2, 20))) * SIZE_OF_POINT; // for storage 2^20 is about 1e6
-// const BUFFER_HANDLER_SIZE = 2 * SIZE_OF_POINT;
 
-// const THREADS_PER_WORKGROUP = 32;
 const THREADS_PER_WORKGROUP = 64;
-// const THREADS_PER_WORKGROUP = 128;
 
-// const BUFFER_HANDLER_SIZE = 1048560; // for uniform
 const container = document.getElementById("container") as HTMLDivElement;   // The container element
 const fileDropHandler = new FileDropHandler(container, device, screen_size, BUFFER_HANDLER_SIZE);
-let arrayBufferHandler = fileDropHandler.getArrayBufferHandler();
+let batchHandler = fileDropHandler.getBatchHandler();
 
 // Region GUI
 const gui = new GUI();
@@ -138,6 +137,8 @@ let depthBuffer = device.createBuffer({
 });
 
 // Region Debug Buffers
+/*
+// Some buffers for debugging, I will not remove them because they might be useful in the future.
 const show_debug_buffers = false;
 const debug_framebuffer = device.createBuffer({
     label: "debug framebuffer",
@@ -161,16 +162,16 @@ const debug_uniformBuffer = device.createBuffer({
     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
 });
 
-let numberOfPoints = 0;
-
 // const STAGING_BUFFER_SIZE = 1e6 * SIZE_OF_POINT;
-const STAGING_BUFFER_SIZE = arrayBufferHandler.getBufferSize();
+const STAGING_BUFFER_SIZE = batchHandler.getBufferSize();
 const stagingBuffer = device.createBuffer({
     size: STAGING_BUFFER_SIZE,
     usage: GPUBufferUsage.MAP_WRITE |
         GPUBufferUsage.COPY_SRC,
 });
+ */
 // End Region Debug Buffers
+
 
 // Region Uniform
 const uniformBuffer = device.createBuffer({
@@ -218,11 +219,15 @@ const display_shader_bindGroup = device.createBindGroup({
 const display_renderPassDescriptor = Util.create_display_RenderPassDescriptor(context, [0, 0, 0, 1]);
 
 // Region frame
+/**
+ * Observer function to handle the resizing of the canvas.
+ * The observer function is called when the canvas is resized.
+ * The size of the canvas is stored in the {@link screen_size} variable.
+ */
 const observer = new ResizeObserver(entries => {
     for (const entry of entries) {
         const width = entry.contentBoxSize[0].inlineSize;
         const height = entry.contentBoxSize[0].blockSize;
-        // const canvas = entry.target as HTMLCanvasElement;
 
         // clamp the size to the device limits
         canvas.width = Math.max(1, Math.min(width, device.limits.maxTextureDimension2D));
@@ -230,16 +235,26 @@ const observer = new ResizeObserver(entries => {
 
         // update the aspect ratio and screen size for rendering
         aspect = canvas.width / canvas.height;
-        screen_size = vec2.create(canvas.width, canvas.height);
+        screen_size[0] = canvas.width;
+        screen_size[1] = canvas.height;
 
         // update the camera aspect
         camera.resize(aspect);
     }
 });
 observer.observe(canvas);
+/**
+ * The aspect ratio of the camera.
+ * Calculated using the width and height of the canvas initially, is updated when the canvas is resized.
+ */
 let aspect = canvas.width / canvas.height;
 console.log('aspect: ', aspect);
 
+// Region setup camera
+/**
+ * The camera used to view the scene.
+ * The behaviour of the camera can be easily changed by writing a new camera class.
+ */
 const camera = new InertialTurntableCamera(Math.PI / 4, aspect, 1, 100);
 
 const inputHandler = new InputHandlerInertialTurntableCamera(canvas, camera);
@@ -248,16 +263,15 @@ inputHandler.registerInputHandlers();
 const modelMatrix = mat4.identity();
 const mVP = mat4.create();
 
+// Region setup stats
 const stats = new Stats();
 stats.showPanel(0);
 document.body.appendChild(stats.dom);
 
-const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(0xFFFFFFFF);
-// unmap depth buffer
-depthBuffer.unmap();
-
-const batchHandler = arrayBufferHandler as BatchHandler;
-
+/**
+ * Reset the viewport so that the model is in the center of the view.
+ * This function is called when the user presses the "view to model" button.
+ */
 function resetViewport() {
     // figure out extent of the model
     const modelExtent = batchHandler.getTotalModelExtent();
@@ -303,22 +317,32 @@ function resetViewport() {
     console.log("camera: ", camera.getParams());
 }
 
-async function generateFrame() {
-    stats.begin();
+const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(0xFFFFFFFF);
+// unmap depth buffer
+depthBuffer.unmap();
 
+let numberOfPoints = 0;
+
+/**
+ * The main function that generates the frame. This function is called recursively using requestAnimationFrame.
+ */
+async function generateFrame() {
+    // update stats
+    stats.begin();
+    // update camera
     camera.tick();
 
     let commandEncoder = device.createCommandEncoder();
 
-    // camera.zoom(0, 0, 0.001);
-
     // get mVP matrix
-    // mat4.multiply(camera.getViewProjectionMatrix(), modelMatrix, mVP);
     mat4.multiply(camera.getProjectionMatrix(), camera.getViewMatrix(), mVP);
     mat4.multiply(mVP, modelMatrix, mVP);
 
-    debug_div.innerText = `vp matrix: ${camera.getViewMatrix()}
-    mvp matrix: ${mVP},
+    // debug div when no points are loaded
+    debug_div.innerText = `vp matrix: 
+    ${formatF32ArrayAsMatrix(camera.getViewMatrix())}
+    mvp matrix: 0
+    ${formatF32ArrayAsMatrix(mVP)},
     `
 
     // reset depth buffer
@@ -327,6 +351,7 @@ async function generateFrame() {
     const batches_shown: number[] = [];
     const batches_renderType: number[] = [];
 
+    // go through all the batches and render visible ones
     for (const batch of batchHandler.getBatches()) {
         if (!batch.isWrittenToGPU()) {
             continue;
@@ -360,6 +385,7 @@ async function generateFrame() {
         // Region Uniform
         // console.log(`batch.getOrigin() of batch ${batch.getID()}: `, batch.getOrigin());
         // console.log(`batch.getBoxSize() of batch ${batch.getID()}: `, batch.getBoxSize());
+        // building the uniform buffer data
         const uniform_data = new Float32Array([
             screen_size[0], screen_size[1], 0, 0, // padding
             ...mVP,
@@ -368,9 +394,7 @@ async function generateFrame() {
             accuracy_level, 0, 0, 0,
         ]);
         device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
-        // const currentBuffer = multiple_Buffer[currentUsedBufferIndex];
 
-        // let nr_pointsInCurrentBuffer = nrOfTestPoints;
         let nr_pointsInCurrentBuffer = batch.filledSize();
 
         // Region Workgroups
@@ -387,21 +411,6 @@ async function generateFrame() {
         }
 
         // Region BindGroup
-        /*
-        const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [
-            uniformBuffer,
-            // testBuffer,
-            batch.getPointsGpuBuffer(),
-            depthBuffer
-        ]);
-        const compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [
-            uniformBuffer,
-            // testBuffer,
-            batch.getPointsGpuBuffer(),
-            depthBuffer,
-            framebuffer
-        ]);
-         */
         const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [
             uniformBuffer,
             depthBuffer,
@@ -423,7 +432,6 @@ async function generateFrame() {
         const compute_depth_pass = commandEncoder.beginComputePass();
         compute_depth_pass.setPipeline(compute_depth_pipeline);
         compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup);
-        // compute_depth_pass.setBindGroup(0, test_depth_bindGroup);
         compute_depth_pass.dispatchWorkgroups(
             Math.max(1, xWorkGroups),
             Math.max(1, yWorkGroups),
@@ -434,7 +442,6 @@ async function generateFrame() {
         const computePass = commandEncoder.beginComputePass();
         computePass.setPipeline(computePipeline);
         computePass.setBindGroup(0, compute_shader_bindGroup);
-        // computePass.setBindGroup(0, test_compute_bindGroup);
         computePass.dispatchWorkgroups(
             Math.max(1, xWorkGroups),
             Math.max(1, yWorkGroups),
@@ -448,13 +455,15 @@ async function generateFrame() {
 
         debug_div.innerText = `Number of points: ${Util.segmentNumber(numberOfPoints)},
         Number of points per batch: ${Util.segmentNumber(batch.getBatchSize())},
-        Number of batches: ${arrayBufferHandler.numberOfBuffers()},
+        Number of batches: ${batchHandler.numberOfBuffers()},
         Batches shown: ${batches_shown.join("\t")},
         Batches render type: ${batches_renderType.join("\t")},
         TpW: ${THREADS_PER_WORKGROUP},
         Workgroups: ${xWorkGroups} x ${yWorkGroups} x ${zWorkGroups},
-        vp matrix: ${camera.getViewMatrix()}
-        mvp matrix: ${mVP},
+        vp matrix: 
+        ${formatF32ArrayAsMatrix(camera.getViewMatrix())}
+        mvp matrix: 
+        ${formatF32ArrayAsMatrix(mVP)},
         `;
     }
 
@@ -485,19 +494,18 @@ async function generateFrame() {
 
 requestAnimationFrame(generateFrame);
 
-function formatF32Array(float32Array: Float32Array): string {
+function formatF32ArrayAsMatrix(float32Array: Float32Array): string {
     const helper = mat4.transpose(float32Array);
     let string = "";
     for (let i = 0; i < float32Array.length; i++) {
-        string += limitToNDecimals(helper[i], 2) + ",\t   ";
+        string += helper[i].toFixed(2) + ",\t   ";
         if ((i + 1) % 4 == 0 && i != 0) {
             string += "\n";
         }
     }
     return string;
-    // return Array.from(float32Array).map((x) => x.toString()).join(",\n");
 }
 
-function limitToNDecimals(x: number, n: number): number {
-    return Math.round(x * Math.pow(10, n)) / Math.pow(10, n);
+function setDebugDivVisibility(visible: boolean) {
+    debug_div.style.display = visible ? "block" : "none";
 }

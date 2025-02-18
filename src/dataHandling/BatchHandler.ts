@@ -1,21 +1,7 @@
 import {vec2} from "webgpu-matrix";
-import {ArrayBufferHandler} from "./ArrayBufferHandler";
 import {Batch} from "./Batch";
 
-export abstract class DataHandler {
-    abstract add(data: ArrayBuffer): void;
-
-    abstract addWithLoop(data: ArrayBuffer): Promise<void>;
-
-    abstract getBufferLength(buffer_num: number): number;
-
-    abstract numberOfBuffers(): number;
-
-    abstract getBufferSize(): number;
-
-}
-
-export class BatchHandler extends DataHandler {
+export class BatchHandler {
     private counter: number = 0;
     private _device: GPUDevice;
     /**
@@ -31,7 +17,6 @@ export class BatchHandler extends DataHandler {
         batchSize: number,
         screenSize: vec2.default
     ) {
-        super();
         this._device = device;
         this._batchSize = batchSize;
         this._screenSize = screenSize
@@ -40,6 +25,9 @@ export class BatchHandler extends DataHandler {
         this.addBatch();
     }
 
+    /**
+     * Add a new empty {@link Batch} to the batch handler and returns the newly created {@link Batch} instance.
+     */
     addBatch(): Batch {
         this._batches.push(new Batch(
             this._device,
@@ -50,14 +38,20 @@ export class BatchHandler extends DataHandler {
         return this._batches[this._batches.length - 1];
     }
 
+    /**
+     * For each batch in the batch handler, call the callback function with the batch as the argument.
+     * @param callback
+     */
     forEachBatch(callback: (batch: Batch) => void) {
         this._batches.forEach(callback);
     }
 
-    forEachBatchWithIndex(callback: (batch: Batch, index: number) => void) {
-        this._batches.forEach(callback);
-    }
-
+    /**
+     * For each batch in the batch handler that is on screen, call the callback function with the batch as the argument.
+     * If the batch is on screen is determined by calling the {@link Batch.isOnScreen} method.
+     * @param mvp
+     * @param callback
+     */
     forEachBatchOnScreen(mvp: Float32Array, callback: (batch: Batch) => void) {
         this._batches.forEach(batch => {
             if (batch.isOnScreen(mvp)) {
@@ -66,17 +60,25 @@ export class BatchHandler extends DataHandler {
         });
     }
 
+    /**
+     * Get the batch at the given index.
+     * @param index
+     */
     getBatch(index: number) {
         return this._batches[index];
     }
 
+    /**
+     * Get all the batches in the batch handler.
+     */
     getBatches() {
         return this._batches;
     }
 
     /**
      * Add an arbitrary amount of data to the batch handler. The data is split into batches of size batchSize.
-     * @param data The data to be added to the batch handler. Arbitrary length.
+     * @param data The {@link ArrayBuffer} of data to be added to the batch handler. Arbitrary length.
+     * @returns {Promise<void>} A promise that resolves when the data has been added to the batch handler.
      */
     async add(data: ArrayBuffer): Promise<void> {
         let remainingData = data;
@@ -97,6 +99,11 @@ export class BatchHandler extends DataHandler {
         }
     }
 
+    /**
+     * Write the data of the first batch that can be written to the GPU to the GPU.
+     *
+     * This method is called once per frame to decrease initial loading time.
+     */
     async writeOneBufferToGPU(): Promise<void> {
         for (let b of this._batches) {
             if (b.canBeWrittenToGPU()) {
@@ -106,18 +113,9 @@ export class BatchHandler extends DataHandler {
         }
     }
 
-    async addWithLoop(data: ArrayBuffer): Promise<void> {
-        await this.add(data);
-    }
-
-    getBufferLength(buffer_num: number): number {
-        return 0;
-    }
-
-    getBufferSize(): number {
-        return 0;
-    }
-
+    /**
+     * Get the number of batches in the batch handler.
+     */
     numberOfBuffers(): number {
         return this._batches.length;
     }

@@ -1,5 +1,8 @@
 import {mat4, vec3} from "webgpu-matrix";
 
+/**
+ * This class is a wrapper around the inertial-turntable-camera library. See {@link https://github.com/standardCyborg/inertial-turntable-camera}.
+ */
 export class InertialTurntableCamera {
     fov: number;
     aspect: number;
@@ -7,10 +10,6 @@ export class InertialTurntableCamera {
     far: number;
 
     private camera: any; // No type information available for InertialTurntableCamera
-
-    // private cameraMatrix: Float32Array;
-    // private projectionMatrix: Float32Array;
-    // private viewProjectionMatrix: Float32Array;
 
     private initialParams: any
 
@@ -20,11 +19,6 @@ export class InertialTurntableCamera {
         this.aspect = aspect;
         this.near = near;
         this.far = far;
-
-        // this.cameraMatrix = mat4.identity();
-        // this.projectionMatrix = mat4.perspective(fov, aspect, near, far);
-        // this.projectionMatrix = mat4.identity();
-        // this.viewProjectionMatrix = mat4.identity();
 
         this.camera = require('inertial-turntable-camera')();
 

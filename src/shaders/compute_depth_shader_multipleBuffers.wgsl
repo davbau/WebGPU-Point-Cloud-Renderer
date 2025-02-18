@@ -16,16 +16,7 @@ struct Points {
 }
 */
 
-//struct Point {
-//    x: f32,
-//    y: f32,
-//    z: f32,
-//    color: u32,
-//};
-
-//const factor = 4294967296.0; // 2^32
-//const factor = 2147483648.0; // 2^31
-//const factor = 1073741824.0; // 2^30
+// The factor is used to convert the 30 bit integer coordinates to float coordinates using the batch origin and size.
 const factor = 1073741823.0; // 0b0011_1111_1111_1111_1111_1111_1111_1111
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -34,7 +25,7 @@ const factor = 1073741823.0; // 0b0011_1111_1111_1111_1111_1111_1111_1111
 @group(0) @binding(2) var<storage, read> courseBuffer: array<u32>;
 @group(0) @binding(3) var<storage, read> mediumBuffer: array<u32>;
 @group(0) @binding(4) var<storage, read> fineBuffer: array<u32>;
-//@group(0) @binding(5) var<storage, read> colorBuffer: array<u32>;
+// We don't need the color buffer for depth computation.
 
 @compute @workgroup_size(64, 1, 1)
 fn main(
@@ -56,21 +47,19 @@ fn main(
     let Y = f32(p.y) * f32(uniforms.size.y / factor) + uniforms.origin.y;
     let Z = f32(p.z) * f32(uniforms.size.z / factor) + uniforms.origin.z;
 
-//    let color = colorBuffer[pointIndex].color;
-
     let pos = uniforms.mvp * vec4<f32>(X, Y, Z, 1.0);
     let ndc = pos / pos.w;
 
-    // Discard
+    // Discard points behind the camera.
     if (ndc.w < 0.0) {
         return;
     }
 
-    // Convert ndc to screen space coordinates
+    // Convert ndc to screen space coordinates.
     let screen_x = (ndc.x * 0.5 + 0.5) * uniforms.canvas_size.x;
     let screen_y = (ndc.y * 0.5 + 0.5) * uniforms.canvas_size.y;
 
-    // Discard
+    // Discard points outside the screen.
     if (screen_x < 0.0 || screen_x >= uniforms.canvas_size.x) {
         return;
     }
@@ -83,9 +72,10 @@ fn main(
 
     // compute depth
     let uint_depth = bitcast<u32>(ndc.w);
-    atomicMin(&depthBuffer[index], uint_depth);
+    atomicMin(&depthBuffer[index], uint_depth); // atomic min will do the calculation and store the result in depthBuffer[index].
 }
 
+// Unraveling the bit packed coordinates.
 fn coarse(pointIndex: u32) -> vec3<u32> {
     let coarsebits = courseBuffer[pointIndex];
 

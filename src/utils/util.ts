@@ -1,6 +1,20 @@
-import {Point, u_int32} from "./types/c_equivalents";
+import {Point, u_int32} from "../types/c_equivalents";
 
 export class Util {
+    /**
+     * Create a {@link GPURenderPipelineDescriptor} for a pipeline.
+     *
+     * The vertex shader must have a position attribute and an uv attribute.
+     *
+     * The fragment shader must have a single output target.
+     *
+     *
+     * @param device The GPU device.
+     * @param shader_module The shader module for the vertex and fragment shader.
+     * @param vs_entry_point The entry point for the vertex shader.
+     * @param fs_entry_point The entry point for the fragment shader.
+     * @param format The format of the output target.
+     */
     static createPipelineDescriptor_pos4_uv2(device: GPUDevice, shader_module: GPUShaderModule, vs_entry_point: string, fs_entry_point: string, format: GPUTextureFormat): GPURenderPipelineDescriptor {
         return {
             layout: 'auto',
@@ -33,6 +47,13 @@ export class Util {
         } as GPURenderPipelineDescriptor;
     };
 
+    /**
+     * Create a {@link GPUBindGroupLayout} for a bind group using an array of {@link GPUBuffer}s.
+     * @param device The GPU device.
+     * @param layout The layout of the bind group.
+     * @param buffers The buffers to bind.
+     * @returns {GPUBindGroupLayout} The bind group layout.
+     */
     static createBindGroup(device: GPUDevice, layout: GPUBindGroupLayout, buffers: GPUBuffer[]): GPUBindGroup {
         const entries = buffers.map((buffer, i) => {
             return {
@@ -49,6 +70,11 @@ export class Util {
         });
     };
 
+    /**
+     * Creates a {@link GPURenderPassDescriptor} for the render pass that clears the color attachment.
+     * @param context The canvas context.
+     * @param clearValue The clear value for the color attachment.
+     */
     static create_display_RenderPassDescriptor(context: GPUCanvasContext, clearValue: GPUColor): GPURenderPassDescriptor {
         return {
             label: "display render pass",
@@ -63,6 +89,11 @@ export class Util {
         } as GPURenderPassDescriptor;
     };
 
+    /**
+     * Add a number separator every 3 digits.
+     * @param n The number to add separators to.
+     * @returns {string} The number with separators.
+     */
     static segmentNumber(n: number): string {
         const s = n.toString();
         let result = "";
@@ -99,7 +130,7 @@ export class Util {
         return points;
     }
 
-// Create points in a line (x-axis)
+    // Create points in a line (x-axis)
     static createDepthBufferTest(n: number): Point[] {
         const points: Point[] = [];
         for (let i = 0; i < n; i++) {
@@ -113,14 +144,19 @@ export class Util {
         return points;
     }
 
-    static randomOneOfTwoNumbers(a: number, b: number): number {
-        return Math.random() > 0.5 ? a : b;
-    }
-
+    /**
+     * Generate a random number between min and max.
+     * @param min The minimum value.
+     * @param max The maximum value.
+     */
     static randomNumberBetween(min: number, max: number): number {
         return Math.random() * (max - min) + min;
     }
 
+    /**
+     * Convert an array of {@link Point}s to an ArrayBuffer.
+     * @param points the array of {@link Point}s to convert.
+     */
     static convertPointsToArrayBuffer(points: Point[]): ArrayBuffer {
         const arr = new ArrayBuffer(points.length * 16);
         const view = new DataView(arr);

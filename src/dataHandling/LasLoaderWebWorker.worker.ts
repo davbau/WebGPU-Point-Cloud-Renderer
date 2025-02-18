@@ -1,5 +1,5 @@
 import {LASHeader_small} from "./SmallLASLoader";
-import {u_short} from "./types/c_equivalents";
+import {u_short} from "../types/c_equivalents";
 
 export interface WorkerMessage {
     buffer: ArrayBuffer;

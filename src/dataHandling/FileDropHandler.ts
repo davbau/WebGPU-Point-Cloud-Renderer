@@ -1,28 +1,38 @@
 import {LAS_FILE_ENDINGS, SmallLASLoader} from "./SmallLASLoader";
-import {ArrayBufferHandler} from "./ArrayBufferHandler";
-import {BatchHandler, DataHandler} from "./BatchHandler";
+import {BatchHandler} from "./BatchHandler";
 import {vec2} from "webgpu-matrix";
 
 export class FileDropHandler {
+    /**
+     * The container element where the files can be dropped.
+     * @private
+     */
     private container: HTMLElement;
+
+    /**
+     * The names of the loaded files. Duplicates are not allowed.
+     * @private
+     */
     private loadedFiles: string[];
-    private loadedArrayBuffers: ArrayBuffer[];
+
+    /**
+     * The file loader used to load the las files.
+     * @private
+     */
     private lasLoader: SmallLASLoader;
     private device: GPUDevice;
     private screen_size: vec2.default;
 
-    private dataHandler: DataHandler;
+    private batchHandler: BatchHandler;
 
     constructor(container: HTMLElement, device: GPUDevice, screenSize: vec2.default, maxBufferSize: number) {
         this.container = container;
         this.lasLoader = new SmallLASLoader();
         this.loadedFiles = [];
-        this.loadedArrayBuffers = [];
-        // this.isArrayBufferClaimed = [];
         this.device = device;
         this.screen_size = screenSize;
 
-        this.dataHandler = new BatchHandler(
+        this.batchHandler = new BatchHandler(
             device,
             maxBufferSize,
             screenSize
@@ -31,13 +41,16 @@ export class FileDropHandler {
         this.registerEvents();
     }
 
-    getArrayBufferHandler() {
-        return this.dataHandler;
-    }
-    setArrayBufferHandler(arrayBufferHandler: ArrayBufferHandler) {
-        this.dataHandler = arrayBufferHandler;
+    /**
+     * @returns The batch Handler used to store the loaded points.
+     */
+    getBatchHandler() {
+        return this.batchHandler;
     }
 
+    /**
+     * Registers the events for dragging files over the {@link container} and dropping them.
+     */
     registerEvents() {
         this.container.ondrop = (ev) => {
             this.dropHandler(ev);
@@ -47,6 +60,10 @@ export class FileDropHandler {
         }
     }
 
+    /**
+     * Handles the drop event. Uses the {@link loadDroppedFiles} method to load the dropped files.
+     * @param ev
+     */
     dropHandler(ev: DragEvent) {
         console.log("File(s) dropped");
 
@@ -79,6 +96,11 @@ export class FileDropHandler {
 
         this.loadDroppedFiles(loadedFiles);
     }
+
+    /**
+     * Loads the dropped files. Checks if the file is already loaded and if it has the las ending.
+     * @param files
+     */
     async loadDroppedFiles(files: File[]) {
         for (let file of files) {
             if (this.loadedFiles.includes(file.name)) {
@@ -89,18 +111,23 @@ export class FileDropHandler {
                 console.log("File does not have las ending", file.name);
                 continue;
             }
+
             const header = await this.lasLoader.loadLasHeader(file);
             console.log("loading las file", file, header);
+
             const points = await this.lasLoader.loadLasPointsAsBuffer(file, header);
             console.log("got ", points, " points from ", file.name);
-            this.dataHandler.addWithLoop(points).then(() => console.log("Added points to buffer"));
+
+            this.batchHandler.add(points).then(() => console.log("Added points to buffer"));
             this.loadedFiles.push(file.name);
-            // this.dataHandler.add(points);
-            // this.loadedArrayBuffers.push(points);
-            // this.isArrayBufferClaimed.push(false);
         }
     }
 
+    /**
+     * Checks if the file has one of the las endings found in {@link LAS_FILE_ENDINGS}.
+     * @param fileName the name of the file to check
+     * @returns true if the file has one of the las endings, false otherwise
+     */
     hasLasEnding(fileName: string): boolean {
         for (let lasFileEnding of LAS_FILE_ENDINGS) {
             if (fileName.endsWith(lasFileEnding)) {
@@ -110,6 +137,10 @@ export class FileDropHandler {
         return false;
     }
 
+    /**
+     * Handles the drag over event. Prevents the default behavior.
+     * @param ev
+     */
     dragOverHandler(ev: DragEvent) {
         console.log("File(s) in drop zone");
         ev.preventDefault();

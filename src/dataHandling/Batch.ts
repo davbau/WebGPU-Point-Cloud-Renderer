@@ -1,5 +1,5 @@
 import {mat4, vec2, vec3, vec4} from "webgpu-matrix";
-import {u_int32} from "./types/c_equivalents";
+import {u_int32} from "../types/c_equivalents";
 import assert from "node:assert";
 
 type UniformType = {
@@ -11,6 +11,10 @@ type UniformType = {
     renderMode: u_int32;
 }
 
+/**
+ * One Batch with a set number of points.
+ * Used in the {@Link BatchHandler} container class.
+ */
 export class Batch {
     /**
      * Bounding box of the batch. The bounding box is an array of 6 numbers: [minX, minY, minZ, maxX, maxY, maxZ].
@@ -54,19 +58,23 @@ export class Batch {
     private lastUsedMVP: Float32Array;
     private transformedCornersCache: Float32Array;
 
-    /**
-     * The GPU buffer containing the vertices of the batch.
-     * The course buffer contains the 10 most significant bits of x, y and z as distances from the bounding box origin.
-     * @private
-     */
+
+    /** The GPU buffer containing the points of the batch. The course buffer contains the 10 most significant bits of x, y and z as distances from the {@link _boundingBox} origin. **/
     private gpuBuffer_coarse: GPUBuffer;
+    /** The GPU buffer containing the points of the batch. The medium buffer contains the 10th to 20th most significant bits of x, y and z as distances from the {@link _boundingBox} origin. **/
     private gpuBuffer_medium: GPUBuffer;
+    /** The GPU buffer containing the points of the batch. The fine buffer contains the 20th to 30th most significant bits of x, y and z as distances from the {@link _boundingBox} origin. **/
     private gpuBuffer_fine: GPUBuffer;
+    /** The GPU buffer containing the colors for the points of the batch. **/
     private gpuBuffer_color: GPUBuffer;
 
+    /** The Host buffer containing the points of the batch. The course buffer contains the 10 most significant bits of x, y and z as distances from the {@link _boundingBox} origin. **/
     private hostBuffer_coarse?: Uint32Array;
+    /** The Host buffer containing the points of the batch. The medium buffer contains the 10th to 20th most significant bits of x, y and z as distances from the {@link _boundingBox} origin. **/
     private hostBuffer_medium?: Uint32Array;
+    /** The Host buffer containing the points of the batch. The fine buffer contains the 20th to 30th most significant bits of x, y and z as distances from the {@link _boundingBox} origin. **/
     private hostBuffer_fine?: Uint32Array;
+    /** The Host buffer containing the colors for the points of the batch. **/
     private hostBuffer_color?: Uint32Array;
 
     private buffersReadyToWrite: boolean;
@@ -82,6 +90,7 @@ export class Batch {
         id: number
     ) {
         console.log("Creating new batch with size", bufferSize);
+        // Number of this Batch for debugging
         this._id = id;
         this._device = device;
         this._bufferSize = bufferSize;
@@ -112,6 +121,12 @@ export class Batch {
         this.transformedCornersCache = new Float32Array(24);
     }
 
+    /**
+     * Create the GPU Buffer to hold the loaded points.
+     * @param number_of_points the number of points in the batch. This controls the size of the buffer using the size per element.
+     * @param label label of the buffer used for debugging.
+     * @private
+     */
     private makeGPUBuffer(number_of_points: number, label: string) {
         return this._device.createBuffer({
             label: label,
@@ -120,16 +135,9 @@ export class Batch {
         });
     }
 
-    // private makeUniformGPUBuffer() {
-    //     return this._device.createBuffer({
-    //         size: 4 * 4 * 2 + 4,
-    //         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-    //     });
-    // }
-
     /**
      * Load points into the batch. Each point has to be processed into a fine, medium and coarse representation and then loaded into the corresponding GPU buffer.
-     * The bounding box and the size of the batch are also updated.
+     * The bounding box {@link _boundingBox} and the size of the batch are also updated.
      * @param data The points to load in the format: [x1, y1, z1, c1, x2, y2, z2, c2, ...]
      * x, y, z are the coordinates of the point and c is the color of the point.
      * x, y, z are f32 and c is an uint32.
@@ -157,8 +165,6 @@ export class Batch {
         // console.log("Size: ", boxSize);
         // console.log("Origin: ", origin);
 
-        // unit32 max value
-        // const factor = 2 ** 32 - 1;
         const factor = 2 ** 30; // 0b0100_0000_0000_0000_0000_0000_0000_0000
         const bitmask30 = factor - 1; // 0b0011_1111_1111_1111_1111_1111_1111_1111
 
@@ -194,19 +200,16 @@ export class Batch {
             const coarseX = (xDist >> 20) & 0x3FF;
             const coarseY = (yDist >> 20) & 0x3FF;
             const coarseZ = (zDist >> 20) & 0x3FF;
-            // coarse[i] = (coarseX << 20) | (coarseY << 10) | coarseZ;
             courseView.setUint32(i * 4, (coarseX << 20) | (coarseY << 10) | coarseZ, true);
 
             const mediumX = (xDist >> 10) & 0x3FF;
             const mediumY = (yDist >> 10) & 0x3FF;
             const mediumZ = (zDist >> 10) & 0x3FF;
-            // medium[i] = (mediumX << 20) | (mediumY << 10) | mediumZ;
             mediumView.setUint32(i * 4, (mediumX << 20) | (mediumY << 10) | mediumZ, true);
 
             const fineX = (xDist >> 0) & 0x3FF;
             const fineY = (yDist >> 0) & 0x3FF;
             const fineZ = (zDist >> 0) & 0x3FF;
-            // fine[i] = (fineX << 20) | (fineY << 10) | fineZ;
             fineView.setUint32(i * 4, (fineX << 20) | (fineY << 10) | fineZ, true);
 
             // color[i] = c;
@@ -223,17 +226,14 @@ export class Batch {
     /**
      * Write the data of the buffer to the GPU. This function exists so the load of transferring data to the GPU can be spread out over multiple frames.
      * The host buffer may be destroyed after it is copied to the GPU buffer to save memory.
+     *
      * @param deleteHostBuffer_ifFull If true, the host buffer will be destroyed if it is full.
      */
     async writeDataToGPUBuffer(deleteHostBuffer_ifFull: boolean = false) {
         if (this.buffersReadyToWrite && !this.buffersInFlight) {
-            // console.log("Writing data to GPU buffer for Batch: ", this._id);
-            // console.log("GPU Buffer size: ", this.gpuBuffer_coarse.size);
-            // console.log("Host Buffer size: ", this.hostBuffer_coarse!.byteLength);
             this._device.queue.writeBuffer(this.gpuBuffer_coarse, 0, this.hostBuffer_coarse!.buffer, 0, this.hostBuffer_coarse!.byteLength);
             this._device.queue.writeBuffer(this.gpuBuffer_medium, 0, this.hostBuffer_medium!.buffer, 0, this.hostBuffer_medium!.byteLength);
             this._device.queue.writeBuffer(this.gpuBuffer_fine, 0, this.hostBuffer_fine!.buffer, 0, this.hostBuffer_fine!.byteLength);
-            // console.log(`Color for batch ${this._id}: `, this.hostBuffer_color, 0);
             this._device.queue.writeBuffer(this.gpuBuffer_color, 0, this.hostBuffer_color!.buffer, 0, this.hostBuffer_color!.byteLength);
             this.buffersInFlight = true;
 
@@ -253,6 +253,9 @@ export class Batch {
         }
     }
 
+    /**
+     * Get the origin of the batch in 3D space. The origin is an array of 3 numbers: [originX, originY, originZ].
+     */
     getOrigin() {
         return [
             this._boundingBox[0],
@@ -284,6 +287,9 @@ export class Batch {
         return this.gpuBuffer_color;
     }
 
+    /**
+     * Destroy the GPU buffers of the batch.
+     */
     destroyGPUBuffers() {
         this.gpuBuffer_coarse.destroy();
         this.gpuBuffer_medium.destroy();
@@ -291,6 +297,9 @@ export class Batch {
         this.gpuBuffer_color.destroy();
     }
 
+    /**
+     * Destroy the host buffers of the batch.
+     */
     destroyHostBuffers() {
         delete this.hostBuffer_coarse;
         delete this.hostBuffer_medium;
@@ -321,19 +330,11 @@ export class Batch {
             if (this._boundingBox[5] < z) this._boundingBox[5] = z;
         }
 
-        if (this._boundingBox[0] > this._boundingBox[3] || this._boundingBox[1] > this._boundingBox[4] || this._boundingBox[2] > this._boundingBox[5]) {
-            console.error("Bounding box is invalid: ", this._boundingBox);
-        }
-
         this._size = [
             (this._boundingBox[3] - this._boundingBox[0]),
             (this._boundingBox[4] - this._boundingBox[1]),
             (this._boundingBox[5] - this._boundingBox[2])
         ];
-
-        // console.log("Bounding box: ", this._boundingBox);
-        // console.log("Size: ", this._size);
-        // console.log("Origin: ", this.getOrigin());
     }
 
     /**
@@ -432,36 +433,46 @@ export class Batch {
         return false;
     }
 
+    /**
+     * Returns the number of points actually loaded in the batch.
+     */
     filledSize() {
         return this._filledSize;
     }
 
+    /**
+     * Returns true if the batch is full.
+     */
     isFull() {
         return this._filledSize >= this.batchSize;
     }
 
+    /**
+     * Returns true if the Host buffers are ready to be written to the GPU and not currently in use (for example by another copy operation).
+     */
     canBeWrittenToGPU() {
         return this.buffersReadyToWrite && !this.buffersInFlight;
     }
 
+    /**
+     * Returns true if the batch has been uploaded to the GPU.
+     */
     isWrittenToGPU() {
         return this.buffersWrittenToGPU;
     }
 
+    /**
+     * The maximum number of {@bold Points} that can be loaded into the batch.
+     */
     getBatchSize() {
         return this.batchSize;
     }
 
-    getAmountOfFilledPoints() {
-        return this._filledSize;
-    }
-
+    /**
+     * Get the id of the batch.
+     */
     getID() {
         return this._id;
-    }
-
-    isBufferFull() {
-        return this._filledSize == this.batchSize;
     }
 
     /**

@@ -57,7 +57,7 @@ fn main(
     // convert pos to ndc
     let ndc = pos / pos.w;
 
-    // Discard
+    // Discard points behind the camera.
     if (ndc.w < 0.0) {
         return;
     }
@@ -81,29 +81,25 @@ fn main(
     let minDepth_u32 = atomicLoad(&depthBuffer[index]);
     let minDepth = bitcast<f32>(minDepth_u32);
 
-    // Compute threshold
-    let depthThreshold = minDepth * 1.00;
-//    let depthThreshold = 0.5;
+    // Compute threshold to be 2% more than the minimum depth.
+    // So 2% of points further away from the minimum value will be kept and the rest discarded.
+    let depthThreshold = minDepth * 1.02;
 
-    // Discard
+    // Discard points further away then the depth threshold.
     if (ndc.w > depthThreshold) {
-//        atomicAdd(&frameBuffer[index * 4 + 0], 0xff);
-//        atomicAdd(&frameBuffer[index * 4 + 1], 0);
-//        atomicAdd(&frameBuffer[index * 4 + 2], 0);
-//        atomicAdd(&frameBuffer[index * 4 + 3], 1);
         return;
     }
 
-    // uint32_t
-    // testing with red
-//    atomicAdd(&frameBuffer[index * 4 + 0], 0xff); // r
-//    color = 0xffffffff;
+    // atomic operations adding up the color values. The accumulated values will later be averaged.
     atomicAdd(&frameBuffer[index * 4 + 0], (color >> 16) & 0xFF); // r
     atomicAdd(&frameBuffer[index * 4 + 1], (color >> 8) & 0xFF); // g
     atomicAdd(&frameBuffer[index * 4 + 2], (color >> 0) & 0xFF); // b
+    // The alpha channel holds the number of points that contributed to the pixel.
     atomicAdd(&frameBuffer[index * 4 + 3], 1); // a
 }
 
+
+// Unraveling the bit packed coordinates.
 fn coarse(pointIndex: u32) -> vec3<u32> {
     let coarsebits = courseBuffer[pointIndex];
 
