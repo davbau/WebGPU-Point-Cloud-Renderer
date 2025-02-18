@@ -10,13 +10,13 @@
 /******/ 	"use strict";
 /******/ 	var __webpack_modules__ = ({
 
-/***/ "./src/LasLoaderWebWorker.worker.ts":
-/*!******************************************!*\
-  !*** ./src/LasLoaderWebWorker.worker.ts ***!
-  \******************************************/
+/***/ "./src/dataHandling/LasLoaderWebWorker.worker.ts":
+/*!*******************************************************!*\
+  !*** ./src/dataHandling/LasLoaderWebWorker.worker.ts ***!
+  \*******************************************************/
 /***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
 
-eval("__webpack_require__.r(__webpack_exports__);\nconst ctx = self;\nctx.onmessage = function (event) {\n    console.log(\"Worker received message: \", event.data);\n    // ctx.postMessage(1);  // Transfer the buffer to avoid copying it\n};\nctx.onerror = function (event) {\n    // Send the error message back to the main thread\n    ctx.postMessage({ error: event });\n};\nfunction colorTo256(color) {\n    return Math.floor(color > 255 ? color / 256 : color);\n}\n\n\n\n//# sourceURL=webpack://point_cloud_renderer/./src/LasLoaderWebWorker.worker.ts?");
+eval("__webpack_require__.r(__webpack_exports__);\nconst ctx = self;\nctx.onmessage = function (event) {\n    console.log(\"Worker received message: \", event.data);\n    // ctx.postMessage(1);  // Transfer the buffer to avoid copying it\n};\nctx.onerror = function (event) {\n    // Send the error message back to the main thread\n    ctx.postMessage({ error: event });\n};\nfunction colorTo256(color) {\n    return Math.floor(color > 255 ? color / 256 : color);\n}\n\n\n\n//# sourceURL=webpack://point_cloud_renderer/./src/dataHandling/LasLoaderWebWorker.worker.ts?");
 
 /***/ })
 
@@ -43,7 +43,7 @@ eval("__webpack_require__.r(__webpack_exports__);\nconst ctx = self;\nctx.onmess
 /******/ 	// Load entry module and return exports
 /******/ 	// This entry module can't be inlined because the eval devtool is used.
 /******/ 	var __webpack_exports__ = {};
-/******/ 	__webpack_modules__["./src/LasLoaderWebWorker.worker.ts"](0, __webpack_exports__, __webpack_require__);
+/******/ 	__webpack_modules__["./src/dataHandling/LasLoaderWebWorker.worker.ts"](0, __webpack_exports__, __webpack_require__);
 /******/ 	
 /******/ })()
 ;
