@@ -71,10 +71,13 @@ const gui = new GUI();
 // GUI parameters
 const params: {
     renderQuality: 'auto' | 'coarse' | "medium" | "fine",
+    show_debug_div: boolean,
 } = {
     renderQuality: 'auto',
+    show_debug_div: true,
 };
 gui.add(params, 'renderQuality', ['auto', 'coarse', "medium", "fine"]);
+gui.add(params, 'show_debug_div').onChange((value) => setDebugDivVisibility(value));
 gui.add({view_to_model: resetViewport}, 'view_to_model');
 
 // Region vertex buffer

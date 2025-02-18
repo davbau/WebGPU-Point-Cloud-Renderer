@@ -216,7 +216,7 @@ export class SmallLASLoader {
         // The number of points skipped in each iteration. This can be done when working with very large models.
         const skipper = 1;
 
-        // TODO link to markus' project
+        // see https://github.com/m-schuetz/SimLOD/blob/eb9fde28b0f13c67eb03a919504840e46e940004/tools/las2simlod.mjs#L89-L93
         let rgbOffset = 0;
         if (header.pointDataFormatID === 2) rgbOffset = 20;
         if (header.pointDataFormatID === 3) rgbOffset = 28;
