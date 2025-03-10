@@ -58,9 +58,34 @@ const maxWorkgroupsPerDimension = device.limits.maxComputeWorkgroupsPerDimension
 const maxStorageBufferBindingSize = device.limits.maxStorageBufferBindingSize;
 
 // Region Drag and Drop
-const BUFFER_HANDLER_SIZE = ((Math.pow(2, 20))) * SIZE_OF_POINT; // for storage 2^20 is about 1e6
+// Read out url parameter for buffer handler size.
+const urlParams = new URLSearchParams(window.location.search);
+let handlerSizeParameter = urlParams.get('bSize');
+let BUFFER_HANDLER_SIZE = ((Math.pow(2, 20))) * SIZE_OF_POINT; // for storage 2^20 is about 1e6
+if (handlerSizeParameter) {
+    handlerSizeParameter = handlerSizeParameter.toLowerCase();
+    let decoded = 0;
+    // if just a number is given, it is interpreted as bytes
+    // if a number is given followed by k, m, g, it is interpreted as kilo, mega, giga bytes
 
-const THREADS_PER_WORKGROUP = 64;
+    if (handlerSizeParameter.endsWith("k")) {
+        decoded = parseInt(handlerSizeParameter.slice(0, -1)) * Math.pow(2, 10);
+    } else if (handlerSizeParameter.endsWith("m")) {
+        decoded = parseInt(handlerSizeParameter.slice(0, -1)) * Math.pow(2, 20);
+    } else if (handlerSizeParameter.endsWith("g")) {
+        decoded = parseInt(handlerSizeParameter.slice(0, -1)) * Math.pow(2, 30);
+    } else {
+        decoded = parseInt(handlerSizeParameter);
+    }
+    console.log(`size for buffer passed: ${decoded}`);
+
+    // Force adherence to the device limits and Size of Point
+    BUFFER_HANDLER_SIZE = Math.min(decoded, maxStorageBufferBindingSize);
+    BUFFER_HANDLER_SIZE = BUFFER_HANDLER_SIZE - (BUFFER_HANDLER_SIZE % SIZE_OF_POINT);
+}
+console.log(`BUFFER_HANDLER_SIZE: ${BUFFER_HANDLER_SIZE / Math.pow(2, 20)}M`);
+
+let THREADS_PER_WORKGROUP = 64;
 
 const container = document.getElementById("container") as HTMLDivElement;   // The container element
 const fileDropHandler = new FileDropHandler(container, device, screen_size, BUFFER_HANDLER_SIZE);
@@ -72,49 +97,58 @@ const gui = new GUI();
 const params: {
     renderQuality: 'auto' | 'coarse' | "medium" | "fine",
     show_debug_div: boolean,
+    threads_per_workgroup: number,
 } = {
     renderQuality: 'auto',
     show_debug_div: true,
+    threads_per_workgroup: THREADS_PER_WORKGROUP,
 };
 gui.add(params, 'renderQuality', ['auto', 'coarse', "medium", "fine"]);
 gui.add(params, 'show_debug_div').onChange((value) => setDebugDivVisibility(value));
 gui.add({view_to_model: resetViewport}, 'view_to_model');
+gui.add(params, 'threads_per_workgroup', 1, 256, 1).onChange((value) => THREADS_PER_WORKGROUP = value);
 
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
 
 // Region pipeline
 import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
-const computeShaderModule = device.createShaderModule({
-    label: "compute shader module",
-    code: compute_shader
-});
 
-const computePipeline = device.createComputePipeline({
-    label: "compute pipeline",
-    layout: 'auto',
-    compute: {
-        module: computeShaderModule,
-        entryPoint: "main"
-    }
-});
+const compute_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_shader, THREADS_PER_WORKGROUP, "compute");
+// const computeShaderModule = device.createShaderModule({
+//     label: "compute shader module",
+//     code: compute_shader
+// });
+//
+// const computePipeline = device.createComputePipeline({
+//     label: "compute pipeline",
+//     layout: 'auto',
+//     compute: {
+//         module: computeShaderModule,
+//         entryPoint: "main"
+//     }
+// });
 
 
 import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
-const compute_depth_shaderModule = device.createShaderModule({
-    label: "compute depth shader module",
-    code: compute_depth_shader,
-});
-const compute_depth_pipeline = device.createComputePipeline({
-    label: "compute depth pipeline",
-    layout: 'auto',
-    compute: {
-        module: compute_depth_shaderModule,
-        entryPoint: "main"
-    }
-})
+
+const compute_depth_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_depth_shader, THREADS_PER_WORKGROUP, "compute depth");
+// const compute_depth_shaderModule = device.createShaderModule({
+//     label: "compute depth shader module",
+//     code: compute_depth_shader,
+// });
+// const compute_depth_pipeline = device.createComputePipeline({
+//     label: "compute depth pipeline",
+//     layout: 'auto',
+//     compute: {
+//         module: compute_depth_shaderModule,
+//         entryPoint: "main"
+//     }
+// })
+
 
 import display_shader from "./shaders/display_on_screan.wgsl";
+
 const display_shaderModule = device.createShaderModule({
     label: "display shader module",
     code: display_shader
@@ -189,13 +223,20 @@ const uniformBuffer = device.createBuffer({
 
 
 // Region BindGroup
-const compute_depth_shader_bindGroupLayout = compute_depth_pipeline.getBindGroupLayout(0);
-compute_depth_shader_bindGroupLayout.label = "compute depth pipeline layout";
-// let compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [uniformBuffer, multiple_Buffer[currentUsedBufferIndex], depthBuffer]);
-
-const compute_shader_bindGroupLayout = computePipeline.getBindGroupLayout(0);
-compute_shader_bindGroupLayout.label = "compute pipeline layout";
-// let compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [uniformBuffer, multiple_Buffer[currentUsedBufferIndex], framebuffer, depthBuffer]);
+// const compute_depth_shader_bindGroupLayout = compute_depth_pipeline.getBindGroupLayout(0);
+// compute_depth_shader_bindGroupLayout.label = "compute depth pipeline layout";
+const compute_depth_shader_bindGroupLayouts = compute_depth_pipelines.map(pipeline => pipeline.getBindGroupLayout(0));
+compute_depth_shader_bindGroupLayouts.forEach((layout, index) => {
+    layout.label = "compute depth pipeline layout" +
+        (index === 0 ? " coarse" : index === 1 ? " medium" : " fine")
+});
+// const compute_shader_bindGroupLayout = computePipeline.getBindGroupLayout(0);
+// compute_shader_bindGroupLayout.label = "compute pipeline layout";
+const compute_shader_bindGroupLayouts = compute_pipelines.map(pipeline => pipeline.getBindGroupLayout(0));
+compute_shader_bindGroupLayouts.forEach((layout, index) => {
+    layout.label = "compute pipeline layout" +
+        (index === 0 ? " coarse" : index === 1 ? " medium" : " fine")
+});
 
 const display_pipelineLayout = displayPipeline.getBindGroupLayout(0);
 display_pipelineLayout.label = "display pipeline layout";
@@ -324,6 +365,7 @@ const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(
 // unmap depth buffer
 depthBuffer.unmap();
 
+device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
 let numberOfPoints = 0;
 
 /**
@@ -342,14 +384,16 @@ async function generateFrame() {
     mat4.multiply(mVP, modelMatrix, mVP);
 
     // debug div when no points are loaded
-    debug_div.innerText = `vp matrix: 
-    ${formatF32ArrayAsMatrix(camera.getViewMatrix())}
-    mvp matrix: 0
-    ${formatF32ArrayAsMatrix(mVP)},
-    `
+    if (batchHandler.numberOfBuffers() == 0) {
+        debug_div.innerText = `vp matrix: 
+        ${formatF32ArrayAsMatrix(camera.getViewMatrix())}
+        mvp matrix: 0
+        ${formatF32ArrayAsMatrix(mVP)},
+        `;
+    }
 
     // reset depth buffer
-    device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
+    // device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
     const upload_waiter = batchHandler.writeOneBufferToGPU();
     const batches_shown: number[] = [];
     const batches_renderType: number[] = [];
@@ -385,6 +429,11 @@ async function generateFrame() {
         }
         batches_renderType.push(accuracy_level);
 
+        const compute_depth_shader_bindGroupLayout = compute_depth_shader_bindGroupLayouts[accuracy_level];
+        const compute_shader_bindGroupLayout = compute_shader_bindGroupLayouts[accuracy_level];
+        const computePipeline = compute_pipelines[accuracy_level];
+        const compute_depth_pipeline = compute_depth_pipelines[accuracy_level];
+
         // Region Uniform
         // console.log(`batch.getOrigin() of batch ${batch.getID()}: `, batch.getOrigin());
         // console.log(`batch.getBoxSize() of batch ${batch.getID()}: `, batch.getBoxSize());
@@ -414,22 +463,50 @@ async function generateFrame() {
         }
 
         // Region BindGroup
-        const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [
+        const buffers_for_depth = [
             uniformBuffer,
             depthBuffer,
-            batch.getCoarseGPUBuffer(),
-            batch.getMediumGPUBuffer(),
-            batch.getFineGPUBuffer(),
-        ]);
-        const compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [
+        ]
+        const buffers_for_compute = [
             uniformBuffer,
             depthBuffer,
             framebuffer,
-            batch.getCoarseGPUBuffer(),
-            batch.getMediumGPUBuffer(),
-            batch.getFineGPUBuffer(),
-            batch.getColorGPUBuffer(),
-        ]);
+            batch.getColorGPUBuffer()
+        ];
+        if (accuracy_level >= 0) {
+            buffers_for_depth.push(batch.getCoarseGPUBuffer());
+            buffers_for_compute.push(batch.getCoarseGPUBuffer());
+        }
+        if (accuracy_level >= 1) {
+            buffers_for_depth.push(batch.getMediumGPUBuffer());
+            buffers_for_compute.push(batch.getMediumGPUBuffer());
+        }
+        if (accuracy_level >= 2) {
+            buffers_for_depth.push(batch.getFineGPUBuffer());
+            buffers_for_compute.push(batch.getFineGPUBuffer());
+        }
+
+
+        const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, buffers_for_depth);
+        const compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, buffers_for_compute);
+
+
+        // const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [
+        //     uniformBuffer,
+        //     depthBuffer,
+        //     batch.getCoarseGPUBuffer(),
+        //     batch.getMediumGPUBuffer(),
+        //     batch.getFineGPUBuffer(),
+        // ]);
+        // const compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [
+        //     uniformBuffer,
+        //     depthBuffer,
+        //     framebuffer,
+        //     batch.getCoarseGPUBuffer(),
+        //     batch.getMediumGPUBuffer(),
+        //     batch.getFineGPUBuffer(),
+        //     batch.getColorGPUBuffer(),
+        // ]);
 
         // Region Compute Depth Pass
         const compute_depth_pass = commandEncoder.beginComputePass();

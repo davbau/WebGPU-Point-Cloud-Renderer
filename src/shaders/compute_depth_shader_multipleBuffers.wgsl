@@ -7,14 +7,12 @@ struct Uniforms {
 };
 
 
-/*
-struct Points {
-    coarse: array<u32>, // each u32 element has the 3x10 coarse bit coordinates of one single point.
-    medium: array<u32>, // each u32 element has the 3x10 medium bit coordinates of one single point
-    high: array<u32>,   // each u32 element has the 3x10 medium bit coordinates of one single point
-    color: array<u32>,  // each u32 element has the color of one single point
-}
-*/
+//struct Points {
+//    coarse: array<u32>, // each u32 element has the 3x10 coarse bit coordinates of one single point.
+//    medium: array<u32>, // each u32 element has the 3x10 medium bit coordinates of one single point
+//    high: array<u32>,   // each u32 element has the 3x10 medium bit coordinates of one single point
+//    color: array<u32>,  // each u32 element has the color of one single point
+//}
 
 // The factor is used to convert the 30 bit integer coordinates to float coordinates using the batch origin and size.
 const factor = 1073741823.0; // 0b0011_1111_1111_1111_1111_1111_1111_1111
@@ -22,9 +20,9 @@ const factor = 1073741823.0; // 0b0011_1111_1111_1111_1111_1111_1111_1111
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> depthBuffer: array<atomic<u32>>;
 
-@group(0) @binding(2) var<storage, read> courseBuffer: array<u32>;
-@group(0) @binding(3) var<storage, read> mediumBuffer: array<u32>;
-@group(0) @binding(4) var<storage, read> fineBuffer: array<u32>;
+/*C*/@group(0) @binding(2) var<storage, read> courseBuffer: array<u32>;
+/*M*/@group(0) @binding(3) var<storage, read> mediumBuffer: array<u32>;
+/*F*/@group(0) @binding(4) var<storage, read> fineBuffer: array<u32>;
 // We don't need the color buffer for depth computation.
 
 @compute @workgroup_size(64, 1, 1)
@@ -35,13 +33,10 @@ fn main(
 ) {
     let pointIndex = gid.x;
     var p = vec3<u32>(0, 0, 0);
-    if (uniforms.renderMode == 0u) {
-        p = coarse(pointIndex);
-    } else if (uniforms.renderMode == 1u) {
-        p = medium(pointIndex);
-    } else {
-        p = fine(pointIndex);
-    }
+//    /*C*/p = coarse(pointIndex);
+//    /*M*/p = medium(pointIndex);
+//    /*F*/p = fine(pointIndex);
+    p = transform(pointIndex);
 
     let X = f32(p.x) * f32(uniforms.size.x / factor) + uniforms.origin.x;
     let Y = f32(p.y) * f32(uniforms.size.y / factor) + uniforms.origin.y;
@@ -76,7 +71,8 @@ fn main(
 }
 
 // Unraveling the bit packed coordinates.
-fn coarse(pointIndex: u32) -> vec3<u32> {
+/*fn_C*/
+fn transform(pointIndex: u32) -> vec3<u32> {
     let coarsebits = courseBuffer[pointIndex];
 
     // X, Y and Z are 10 bit integer coordinates, each with 1024 possible values
@@ -90,8 +86,10 @@ fn coarse(pointIndex: u32) -> vec3<u32> {
 
     return vec3<u32>(x, y, z);
 }
+/*fn_end*/
 
-fn medium(pointIndex: u32) -> vec3<u32> {
+/*fn_M*/
+fn transform(pointIndex: u32) -> vec3<u32> {
     let coarsebits = courseBuffer[pointIndex];
     let mediumbits = mediumBuffer[pointIndex];
 
@@ -110,8 +108,10 @@ fn medium(pointIndex: u32) -> vec3<u32> {
 
     return vec3<u32>(x, y, z);
 }
+/*fn_end*/
 
-fn fine(pointIndex: u32) -> vec3<u32> {
+/*fn_F*/
+fn transform(pointIndex: u32) -> vec3<u32> {
     let coarsebits = courseBuffer[pointIndex];
     let mediumbits = mediumBuffer[pointIndex];
     let finebits = fineBuffer[pointIndex];
@@ -135,3 +135,4 @@ fn fine(pointIndex: u32) -> vec3<u32> {
 
     return vec3<u32>(x, y, z);
 }
+/*fn_end*/

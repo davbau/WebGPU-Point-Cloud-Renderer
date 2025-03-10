@@ -23,10 +23,11 @@ const factor = 1073741824; // 2^30
 @group(0) @binding(1) var<storage, read_write> depthBuffer: array<atomic<u32>>;
 @group(0) @binding(2) var<storage, read_write> frameBuffer: array<atomic<u32>>;
 
-@group(0) @binding(3) var<storage, read> courseBuffer: array<u32>;
-@group(0) @binding(4) var<storage, read> mediumBuffer: array<u32>;
-@group(0) @binding(5) var<storage, read> fineBuffer: array<u32>;
-@group(0) @binding(6) var<storage, read> colorBuffer: array<u32>;
+// BUFFERS
+@group(0) @binding(3) var<storage, read> colorBuffer: array<u32>;
+/*C*/@group(0) @binding(4) var<storage, read> courseBuffer: array<u32>;
+/*M*/@group(0) @binding(5) var<storage, read> mediumBuffer: array<u32>;
+/*F*/@group(0) @binding(6) var<storage, read> fineBuffer: array<u32>;
 
 //@compute @workgroup_size(32, 1, 1)
 @compute @workgroup_size(64, 1, 1)
@@ -38,13 +39,10 @@ fn main(
 ) {
     let pointIndex = gid.x;
     var p = vec3<u32>(0, 0, 0);
-    if (uniforms.renderMode == 0u) {
-        p = coarse(pointIndex);
-    } else if (uniforms.renderMode == 1u) {
-        p = medium(pointIndex);
-    } else {
-        p = fine(pointIndex);
-    }
+//    /*C*/p = coarse(pointIndex);
+//    /*M*/p = medium(pointIndex);
+//    /*F*/p = fine(pointIndex);
+    p = transform(pointIndex);
 
     let X = f32(p.x) * f32(uniforms.size.x / factor) + uniforms.origin.x;
     let Y = f32(p.y) * f32(uniforms.size.y / factor) + uniforms.origin.y;
@@ -100,7 +98,8 @@ fn main(
 
 
 // Unraveling the bit packed coordinates.
-fn coarse(pointIndex: u32) -> vec3<u32> {
+/*fn_C*/
+fn transform(pointIndex: u32) -> vec3<u32> {
     let coarsebits = courseBuffer[pointIndex];
 
     // X, Y and Z are 10 bit integer coordinates, each with 1024 possible values
@@ -114,8 +113,10 @@ fn coarse(pointIndex: u32) -> vec3<u32> {
 
     return vec3<u32>(x, y, z);
 }
+/*fn_end*/
 
-fn medium(pointIndex: u32) -> vec3<u32> {
+/*fn_M*/
+fn transform(pointIndex: u32) -> vec3<u32> {
     let coarsebits = courseBuffer[pointIndex];
     let mediumbits = mediumBuffer[pointIndex];
 
@@ -134,8 +135,10 @@ fn medium(pointIndex: u32) -> vec3<u32> {
 
     return vec3<u32>(x, y, z);
 }
+/*fn_end*/
 
-fn fine(pointIndex: u32) -> vec3<u32> {
+/*fn_F*/
+fn transform(pointIndex: u32) -> vec3<u32> {
     let coarsebits = courseBuffer[pointIndex];
     let mediumbits = mediumBuffer[pointIndex];
     let finebits = fineBuffer[pointIndex];
@@ -159,3 +162,4 @@ fn fine(pointIndex: u32) -> vec3<u32> {
 
     return vec3<u32>(x, y, z);
 }
+/*fn_end*/

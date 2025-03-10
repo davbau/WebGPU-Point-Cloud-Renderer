@@ -1,4 +1,4 @@
-import {Point, u_int32} from "../types/c_equivalents";
+import {char, Point, u_int32} from "../types/c_equivalents";
 
 export class Util {
     /**
@@ -88,6 +88,104 @@ export class Util {
             ]
         } as GPURenderPassDescriptor;
     };
+
+
+    /**
+     * Create three gpu compute pipelines for the coarse, medium and fine buffers.
+     * @param device The GPU device to create the pipelines on.
+     * @param code The code of the shader as a string.
+     * @param workgroup_size The workgroup size for the shader.
+     * @param label The label for the pipelines. This will be appended to and used to label the shader modules as well. Name this only something like "compute" without appending "pipeline" or "shader module" yourself.
+     */
+    static create_compute_Pipelines_with_settings(device: GPUDevice, code: string, workgroup_size: number, label: string): GPUComputePipeline[] {
+        const shader_modules = [
+            Util.create_shaderModule_with_settings(device, code, "C", workgroup_size, label + " shader module coarse"),
+            Util.create_shaderModule_with_settings(device, code, "M", workgroup_size, label + " shader module medium"),
+            Util.create_shaderModule_with_settings(device, code, "F", workgroup_size, label + " shader module fine")
+        ]
+
+        const descriptor: GPUComputePipelineDescriptor = {
+            layout: "auto",
+            compute: {
+                module: null as any as GPUShaderModule,
+                entryPoint: "main"
+            }
+        }
+        return shader_modules.map((module, index) => {
+            descriptor.compute.module = module;
+            descriptor.label = label + " pipeline " + (index === 0 ? "coarse" : index === 1 ? "medium" : "fine");
+            return device.createComputePipeline(descriptor);
+        });
+    }
+
+    /**
+     * Create a shader module from the shader code but only keep the buffers and functions for the coarse pass.
+     * @param device The GPU device to create the shader module on.
+     * @param code The code of the shader as a string.
+     * @param type The type of the shader (e.g. "C" for coarse, "M" for medium, "F" for fine).
+     * @param workgroup_size The workgroup size for the shader.
+     * @param label The optional label for the shader module.
+     */
+    static create_shaderModule_with_settings(device: GPUDevice, code: string, type: string, workgroup_size: number, label: string | null): GPUShaderModule {
+        const stripped_code = Util.strip_shaderCode(code, type);
+        const final_code = Util.change_shader_workgroup_size(stripped_code, workgroup_size);
+
+        const shader_module_descriptor: GPUShaderModuleDescriptor = {
+            code: final_code
+        };
+        if (label)
+            shader_module_descriptor.label = label;
+
+        return device.createShaderModule(shader_module_descriptor);
+    }
+
+    static change_shader_workgroup_size(code: string, workgroup_size: number): string {
+        const lines = code.split('\n');
+
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim().startsWith("@compute")) {
+                // match a number and replace it with the workgroup size
+                lines[i] = lines[i].replace(/\d+/, workgroup_size.toString());
+            }
+        }
+
+        return lines.join('\n');
+    }
+
+    /**
+     * Removes the unnecessary buffers and functions from the shader code based on the type.
+     * @param code the shader code to strip down.
+     * @param type the type of shader to keep. The others will be removed.
+     */
+    static strip_shaderCode(code: string, type: string): string {
+        const lines = code.split('\n');
+        let result = "";
+        let keep = false;
+        const all_types = ["C", "M", "F"];
+        const include_lowers = all_types.slice(0, all_types.indexOf(type) + 1);
+
+        // Stripping single lines
+        for (let i = 0; i < lines.length; i++) {
+            const trimmed = lines[i].trim();
+            if (trimmed.startsWith("/*fn_") && !trimmed.startsWith("/*fn_" + type)) {
+                while (!lines[i].startsWith("/*fn_end*/")) {
+                    i++;
+                }
+                i++;
+            } else if (trimmed.startsWith("/*")) {
+                // keep = trimmed.startsWith("/*" + type);
+                const c = trimmed.charAt(2);
+                if(include_lowers.includes(c)) result += lines[i] + "\n";
+            } else if (i < lines.length) result += lines[i] + "\n";
+            // keep = true;
+
+            // if (keep && i < lines.length) {
+            //     result += lines[i] + '\n';
+            // }
+        }
+
+        return result;
+    }
 
     /**
      * Add a number separator every 3 digits.
