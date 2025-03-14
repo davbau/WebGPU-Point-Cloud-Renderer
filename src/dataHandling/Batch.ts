@@ -1,6 +1,5 @@
 import {mat4, vec2, vec3, vec4} from "webgpu-matrix";
 import {u_int32} from "../types/c_equivalents";
-import assert from "node:assert";
 import {Util} from "../utils/util";
 
 type UniformType = {
@@ -105,10 +104,22 @@ export class Batch {
     private buffersInFlight: boolean;
     private buffersWrittenToGPU: boolean;
 
+    private _compute_depth_shader_bindGroupLayouts: GPUBindGroupLayout[];
+    private _compute_shader_bindGroupLayouts: GPUBindGroupLayout[];
+
+    private _uniformBuffer: GPUBuffer;
+    private _depthBuffer: GPUBuffer;
+    private _frameBuffer: GPUBuffer;
+
     private _device: GPUDevice;
 
     constructor(
         device: GPUDevice,
+        uniformBuffer: GPUBuffer,
+        depthBuffer: GPUBuffer,
+        frameBuffer: GPUBuffer,
+        compute_depth_shader_bindGroupLayouts: GPUBindGroupLayout[],
+        compute_shader_bindGroupLayouts: GPUBindGroupLayout[],
         bufferSize: number,
         screenSize: vec2.default,
         id: number
@@ -117,6 +128,11 @@ export class Batch {
         // Number of this Batch for debugging
         this._id = id;
         this._device = device;
+        this._uniformBuffer = uniformBuffer;
+        this._depthBuffer = depthBuffer;
+        this._frameBuffer = frameBuffer;
+        this._compute_depth_shader_bindGroupLayouts = compute_depth_shader_bindGroupLayouts;
+        this._compute_shader_bindGroupLayouts = compute_shader_bindGroupLayouts;
         this._bufferSize = bufferSize;
         this._screenSize = screenSize
 
@@ -261,6 +277,7 @@ export class Batch {
             this._device.queue.writeBuffer(this.gpuBuffer_color, 0, this.hostBuffer_color!.buffer, 0, this.hostBuffer_color!.byteLength);
             this.buffersInFlight = true;
 
+            this.create_bindGroups();
             this._device.queue.onSubmittedWorkDone().then(() => {
                 // finished writing to GPU
                 this.buffersReadyToWrite = false;
@@ -547,26 +564,42 @@ export class Batch {
         return this._boundingBox;
     }
 
-    create_bindGroups(uniformBuffer: GPUBuffer, depthBuffer: GPUBuffer, framebuffer: GPUBuffer, bindGroup_layouts: GPUBindGroupLayout[]): void {
+    create_bindGroups(): void {
         const buffers_for_depth = [
-            uniformBuffer,
-            depthBuffer,
+            this._uniformBuffer,
+            this._depthBuffer,
         ]
         const buffers_for_compute = [
-            uniformBuffer,
-            depthBuffer,
-            framebuffer,
+            this._uniformBuffer,
+            this._depthBuffer,
+            this._frameBuffer,
             this.getColorGPUBuffer()
         ];
+
+        this.bindGroups_depth = [];
+        this.bindGroups_rendering = [];
 
         for (let i = 0; i < 3; i++) {
             buffers_for_depth.push(this.getCoarseGPUBuffer());
             buffers_for_compute.push(this.getCoarseGPUBuffer());
 
-            this.bindGroups_depth![i] = Util.createBindGroup(this._device, bindGroup_layouts[i], buffers_for_depth);
-            this.bindGroups_depth![i].label = 'bind group depth ' + i;
-            this.bindGroups_rendering![i] = Util.createBindGroup(this._device, bindGroup_layouts[i], buffers_for_compute);
-            this.bindGroups_rendering![i].label = 'bind group render ' + i;
+            this.bindGroups_depth.push(Util.createBindGroup(this._device, this._compute_depth_shader_bindGroupLayouts[i], buffers_for_depth));
+            this.bindGroups_depth[i].label = 'bind group depth ' + i;
+            this.bindGroups_rendering.push(Util.createBindGroup(this._device, this._compute_shader_bindGroupLayouts[i], buffers_for_compute));
+            this.bindGroups_rendering[i].label = 'bind group render ' + i;
         }
+    }
+
+    get_depth_bindGroup(type: number): GPUBindGroup | null {
+        if (this.bindGroups_depth)
+            return this.bindGroups_depth[type];
+        return null;
+
+    }
+
+    get_compute_bindGroup(type: number): GPUBindGroup | null {
+        if (this.bindGroups_rendering)
+            return this.bindGroups_rendering[type];
+        return null;
     }
 }

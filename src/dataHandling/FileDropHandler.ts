@@ -21,11 +21,20 @@ export class FileDropHandler {
      */
     private lasLoader: SmallLASLoader;
     private device: GPUDevice;
+
     private screen_size: vec2.default;
 
     private batchHandler: BatchHandler;
 
-    constructor(container: HTMLElement, device: GPUDevice, screenSize: vec2.default, maxBufferSize: number) {
+    constructor(container: HTMLElement,
+                device: GPUDevice,
+                uniformBuffer: GPUBuffer,
+                depthBuffer: GPUBuffer,
+                frameBuffer: GPUBuffer,
+                compute_depth_shader_bindGroupLayouts: GPUBindGroupLayout[],
+                compute_shader_bindGroupLayouts: GPUBindGroupLayout[],
+                screenSize: vec2.default,
+                maxBufferSize: number) {
         this.container = container;
         this.lasLoader = new SmallLASLoader();
         this.loadedFiles = [];
@@ -34,6 +43,11 @@ export class FileDropHandler {
 
         this.batchHandler = new BatchHandler(
             device,
+            uniformBuffer,
+            depthBuffer,
+            frameBuffer,
+            compute_depth_shader_bindGroupLayouts,
+            compute_shader_bindGroupLayouts,
             maxBufferSize,
             screenSize
         );

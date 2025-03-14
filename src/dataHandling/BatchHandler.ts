@@ -4,6 +4,12 @@ import {Batch} from "./Batch";
 export class BatchHandler {
     private counter: number = 0;
     private _device: GPUDevice;
+    private _compute_depth_shader_bindGroupLayouts: GPUBindGroupLayout[];
+    private _compute_shader_bindGroupLayouts: GPUBindGroupLayout[];
+
+    private _uniformBuffer: GPUBuffer;
+    private _depthBuffer: GPUBuffer;
+    private _frameBuffer: GPUBuffer;
     /**
      * The maximum number of points in each batch.
      * @private
@@ -14,10 +20,20 @@ export class BatchHandler {
 
     constructor(
         device: GPUDevice,
+        uniformBuffer: GPUBuffer,
+        depthBuffer: GPUBuffer,
+        frameBuffer: GPUBuffer,
+        compute_depth_shader_bindGroupLayouts: GPUBindGroupLayout[],
+        compute_shader_bindGroupLayouts: GPUBindGroupLayout[],
         batchSize: number,
         screenSize: vec2.default
     ) {
         this._device = device;
+        this._uniformBuffer = uniformBuffer;
+        this._depthBuffer = depthBuffer;
+        this._frameBuffer = frameBuffer;
+        this._compute_depth_shader_bindGroupLayouts = compute_depth_shader_bindGroupLayouts;
+        this._compute_shader_bindGroupLayouts = compute_shader_bindGroupLayouts;
         this._batchSize = batchSize;
         this._screenSize = screenSize
 
@@ -31,6 +47,11 @@ export class BatchHandler {
     addBatch(): Batch {
         this._batches.push(new Batch(
             this._device,
+            this._uniformBuffer,
+            this._depthBuffer,
+            this._frameBuffer,
+            this._compute_depth_shader_bindGroupLayouts,
+            this._compute_shader_bindGroupLayouts,
             this._batchSize,
             this._screenSize,
             this.counter++

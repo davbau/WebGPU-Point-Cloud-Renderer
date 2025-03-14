@@ -88,8 +88,6 @@ console.log(`BUFFER_HANDLER_SIZE: ${BUFFER_HANDLER_SIZE / Math.pow(2, 20)}M`);
 let THREADS_PER_WORKGROUP = 64;
 
 const container = document.getElementById("container") as HTMLDivElement;   // The container element
-const fileDropHandler = new FileDropHandler(container, device, screen_size, BUFFER_HANDLER_SIZE);
-let batchHandler = fileDropHandler.getBatchHandler();
 
 // Region GUI
 const gui = new GUI();
@@ -294,7 +292,7 @@ observer.observe(canvas);
 let aspect = canvas.width / canvas.height;
 console.log('aspect: ', aspect);
 
-// Region setup camera
+// Region setup camera and handlers
 /**
  * The camera used to view the scene.
  * The behaviour of the camera can be easily changed by writing a new camera class.
@@ -306,6 +304,18 @@ inputHandler.registerInputHandlers();
 
 const modelMatrix = mat4.identity();
 const mVP = mat4.create();
+
+const fileDropHandler = new FileDropHandler(
+    container,
+    device,
+    uniformBuffer,
+    depthBuffer,
+    framebuffer,
+    compute_depth_shader_bindGroupLayouts,
+    compute_shader_bindGroupLayouts,
+    screen_size,
+    BUFFER_HANDLER_SIZE);
+let batchHandler = fileDropHandler.getBatchHandler();
 
 // Region setup stats
 const stats = new Stats();
@@ -455,6 +465,7 @@ async function generateFrame() {
         }
 
         // Region BindGroup
+        /*
         const buffers_for_depth = [
             uniformBuffer,
             depthBuffer,
@@ -481,6 +492,10 @@ async function generateFrame() {
 
         const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, buffers_for_depth);
         const compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, buffers_for_compute);
+         */
+
+        const compute_depth_shader_bindGroup = batch.get_depth_bindGroup(accuracy_level);
+        const compute_shader_bindGroup = batch.get_compute_bindGroup(accuracy_level);
 
         // Region Compute Depth Pass
         const compute_depth_pass = commandEncoder.beginComputePass();
