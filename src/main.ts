@@ -94,7 +94,7 @@ if (handler_threads_per_workgroup) {
             parseInt(handler_threads_per_workgroup),
             256
         ),
-    0);
+    1);
 }
 
 const container = document.getElementById("container") as HTMLDivElement;   // The container element
@@ -105,54 +105,24 @@ const gui = new GUI();
 const params: {
     renderQuality: 'auto' | 'coarse' | "medium" | "fine",
     show_debug_div: boolean,
-    // threads_per_workgroup: number,
 } = {
     renderQuality: 'auto',
     show_debug_div: true,
-    // threads_per_workgroup: THREADS_PER_WORKGROUP,
 };
 gui.add(params, 'renderQuality', ['auto', 'coarse', "medium", "fine"]);
 gui.add(params, 'show_debug_div').onChange((value) => setDebugDivVisibility(value));
 gui.add({ view_to_model: resetViewport }, 'view_to_model');
-// gui.add(params, 'threads_per_workgroup', 1, 256, 1).onChange((value) => THREADS_PER_WORKGROUP = value);
 
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
 
 // Region pipeline
 import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
-
 const compute_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_shader, THREADS_PER_WORKGROUP, "compute");
-// const computeShaderModule = device.createShaderModule({
-//     label: "compute shader module",
-//     code: compute_shader
-// });
-//
-// const computePipeline = device.createComputePipeline({
-//     label: "compute pipeline",
-//     layout: 'auto',
-//     compute: {
-//         module: computeShaderModule,
-//         entryPoint: "main"
-//     }
-// });
 
 
 import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
-
 const compute_depth_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_depth_shader, THREADS_PER_WORKGROUP, "compute depth");
-// const compute_depth_shaderModule = device.createShaderModule({
-//     label: "compute depth shader module",
-//     code: compute_depth_shader,
-// });
-// const compute_depth_pipeline = device.createComputePipeline({
-//     label: "compute depth pipeline",
-//     layout: 'auto',
-//     compute: {
-//         module: compute_depth_shaderModule,
-//         entryPoint: "main"
-//     }
-// })
 
 
 import display_shader from "./shaders/display_on_screan.wgsl";
@@ -232,15 +202,12 @@ const uniformBuffer = device.createBuffer({
 
 
 // Region BindGroup
-// const compute_depth_shader_bindGroupLayout = compute_depth_pipeline.getBindGroupLayout(0);
-// compute_depth_shader_bindGroupLayout.label = "compute depth pipeline layout";
 const compute_depth_shader_bindGroupLayouts = compute_depth_pipelines.map(pipeline => pipeline.getBindGroupLayout(0));
 compute_depth_shader_bindGroupLayouts.forEach((layout, index) => {
     layout.label = "compute depth pipeline layout" +
         (index === 0 ? " coarse" : index === 1 ? " medium" : " fine")
 });
-// const compute_shader_bindGroupLayout = computePipeline.getBindGroupLayout(0);
-// compute_shader_bindGroupLayout.label = "compute pipeline layout";
+
 const compute_shader_bindGroupLayouts = compute_pipelines.map(pipeline => pipeline.getBindGroupLayout(0));
 compute_shader_bindGroupLayouts.forEach((layout, index) => {
     layout.label = "compute pipeline layout" +
@@ -476,6 +443,7 @@ async function generateFrame() {
         }
 
         // Region BindGroup
+        // Currently left for performance comparison.
         /*
         const buffers_for_depth = [
             uniformBuffer,
