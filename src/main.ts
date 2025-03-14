@@ -1,14 +1,14 @@
-import {mat4, vec2, vec3} from "webgpu-matrix";
+import { mat4, vec2, vec3 } from "webgpu-matrix";
 
-import {Util} from "./utils/util";
-import {create_and_bind_quad_VertexBuffer} from "./utils/quad";
+import { Util } from "./utils/util";
+import { create_and_bind_quad_VertexBuffer } from "./utils/quad";
 import Stats from "stats.js";
-import {SIZE_OF_POINT} from "./types/c_equivalents";
-import {FileDropHandler} from "./dataHandling/FileDropHandler";
-import {GUI} from "dat.gui";
-import {BatchHandler} from "./dataHandling/BatchHandler";
-import {InputHandlerInertialTurntableCamera} from "./cameras/InputHandler-InertialTurntableCamera";
-import {InertialTurntableCamera} from "./cameras/InertialTurntableCamera";
+import { SIZE_OF_POINT } from "./types/c_equivalents";
+import { FileDropHandler } from "./dataHandling/FileDropHandler";
+import { GUI } from "dat.gui";
+import { BatchHandler } from "./dataHandling/BatchHandler";
+import { InputHandlerInertialTurntableCamera } from "./cameras/InputHandler-InertialTurntableCamera";
+import { InertialTurntableCamera } from "./cameras/InertialTurntableCamera";
 
 const canvas = document.getElementById("gfx-main") as HTMLCanvasElement;
 // // set max size of canvas
@@ -86,6 +86,16 @@ if (handlerSizeParameter) {
 console.log(`BUFFER_HANDLER_SIZE: ${BUFFER_HANDLER_SIZE / Math.pow(2, 20)}M`);
 
 let THREADS_PER_WORKGROUP = 64;
+let handler_threads_per_workgroup = urlParams.get('tpw');
+if (handler_threads_per_workgroup) {
+    console.log("tpw: ", handler_threads_per_workgroup);
+    THREADS_PER_WORKGROUP = Math.max(
+        Math.min(
+            parseInt(handler_threads_per_workgroup),
+            256
+        ),
+    0);
+}
 
 const container = document.getElementById("container") as HTMLDivElement;   // The container element
 
@@ -95,16 +105,16 @@ const gui = new GUI();
 const params: {
     renderQuality: 'auto' | 'coarse' | "medium" | "fine",
     show_debug_div: boolean,
-    threads_per_workgroup: number,
+    // threads_per_workgroup: number,
 } = {
     renderQuality: 'auto',
     show_debug_div: true,
-    threads_per_workgroup: THREADS_PER_WORKGROUP,
+    // threads_per_workgroup: THREADS_PER_WORKGROUP,
 };
 gui.add(params, 'renderQuality', ['auto', 'coarse', "medium", "fine"]);
 gui.add(params, 'show_debug_div').onChange((value) => setDebugDivVisibility(value));
-gui.add({view_to_model: resetViewport}, 'view_to_model');
-gui.add(params, 'threads_per_workgroup', 1, 256, 1).onChange((value) => THREADS_PER_WORKGROUP = value);
+gui.add({ view_to_model: resetViewport }, 'view_to_model');
+// gui.add(params, 'threads_per_workgroup', 1, 256, 1).onChange((value) => THREADS_PER_WORKGROUP = value);
 
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
@@ -146,6 +156,7 @@ const compute_depth_pipelines = Util.create_compute_Pipelines_with_settings(devi
 
 
 import display_shader from "./shaders/display_on_screan.wgsl";
+import { log } from "console";
 
 const display_shaderModule = device.createShaderModule({
     label: "display shader module",
@@ -153,7 +164,7 @@ const display_shaderModule = device.createShaderModule({
 });
 const displayPipelineDescriptor = Util.createPipelineDescriptor_pos4_uv2(device, display_shaderModule, "vs_main", "fs_main", format);
 displayPipelineDescriptor.label = "display pipeline descriptor";
-displayPipelineDescriptor.primitive = {topology: 'triangle-strip'};
+displayPipelineDescriptor.primitive = { topology: 'triangle-strip' };
 const displayPipeline = device.createRenderPipeline(displayPipelineDescriptor);
 
 // Region Framebuffer
