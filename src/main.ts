@@ -383,20 +383,17 @@ async function generateFrame() {
     mat4.multiply(camera.getProjectionMatrix(), camera.getViewMatrix(), mVP);
     mat4.multiply(mVP, modelMatrix, mVP);
 
-    // debug div when no points are loaded
-    if (batchHandler.numberOfBuffers() == 0) {
-        debug_div.innerText = `vp matrix: 
-        ${formatF32ArrayAsMatrix(camera.getViewMatrix())}
-        mvp matrix: 0
-        ${formatF32ArrayAsMatrix(mVP)},
-        `;
-    }
 
     // reset depth buffer
     // device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
     const upload_waiter = batchHandler.writeOneBufferToGPU();
     const batches_shown: number[] = [];
     const batches_renderType: number[] = [];
+
+    // Workgroup initial values for later
+    let xWorkGroups = 1;
+    let yWorkGroups = 1;
+    let zWorkGroups = 1;
 
     // go through all the batches and render visible ones
     for (const batch of batchHandler.getBatches()) {
@@ -435,8 +432,6 @@ async function generateFrame() {
         const compute_depth_pipeline = compute_depth_pipelines[accuracy_level];
 
         // Region Uniform
-        // console.log(`batch.getOrigin() of batch ${batch.getID()}: `, batch.getOrigin());
-        // console.log(`batch.getBoxSize() of batch ${batch.getID()}: `, batch.getBoxSize());
         // building the uniform buffer data
         const uniform_data = new Float32Array([
             screen_size[0], screen_size[1], 0, 0, // padding
@@ -451,9 +446,6 @@ async function generateFrame() {
 
         // Region Workgroups
         const totalWorkGroups = Math.ceil(nr_pointsInCurrentBuffer / THREADS_PER_WORKGROUP);
-        let xWorkGroups = 1;
-        let yWorkGroups = 1;
-        let zWorkGroups = 1;
 
         if (totalWorkGroups <= device.limits.maxComputeWorkgroupsPerDimension) {
             xWorkGroups = totalWorkGroups;
@@ -490,24 +482,6 @@ async function generateFrame() {
         const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, buffers_for_depth);
         const compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, buffers_for_compute);
 
-
-        // const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, [
-        //     uniformBuffer,
-        //     depthBuffer,
-        //     batch.getCoarseGPUBuffer(),
-        //     batch.getMediumGPUBuffer(),
-        //     batch.getFineGPUBuffer(),
-        // ]);
-        // const compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, [
-        //     uniformBuffer,
-        //     depthBuffer,
-        //     framebuffer,
-        //     batch.getCoarseGPUBuffer(),
-        //     batch.getMediumGPUBuffer(),
-        //     batch.getFineGPUBuffer(),
-        //     batch.getColorGPUBuffer(),
-        // ]);
-
         // Region Compute Depth Pass
         const compute_depth_pass = commandEncoder.beginComputePass();
         compute_depth_pass.setPipeline(compute_depth_pipeline);
@@ -532,9 +506,11 @@ async function generateFrame() {
         commandEncoder = device.createCommandEncoder();
 
         numberOfPoints += nr_pointsInCurrentBuffer;
+    }
 
+    if (debug_div.checkVisibility()) {
         debug_div.innerText = `Number of points: ${Util.segmentNumber(numberOfPoints)},
-        Number of points per batch: ${Util.segmentNumber(batch.getBatchSize())},
+        Number of points per batch: ${Util.segmentNumber(batchHandler.getBatch(0).getBatchSize())},
         Number of batches: ${batchHandler.numberOfBuffers()},
         Batches shown: ${batches_shown.join("\t")},
         Batches render type: ${batches_renderType.join("\t")},

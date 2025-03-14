@@ -1,6 +1,7 @@
 import {mat4, vec2, vec3, vec4} from "webgpu-matrix";
 import {u_int32} from "../types/c_equivalents";
 import assert from "node:assert";
+import {Util} from "../utils/util";
 
 type UniformType = {
     // origin of the bounding box, will be padded to vec4 = 16 bytes
@@ -76,6 +77,29 @@ export class Batch {
     private hostBuffer_fine?: Uint32Array;
     /** The Host buffer containing the colors for the points of the batch. **/
     private hostBuffer_color?: Uint32Array;
+
+    /**
+     * Bind groups for the depth render passes. One bind group per different shader.
+     * This is initialised when the buffer is written to the GPU.
+     *
+     * Index 0: coarse
+     * Index 1: medium
+     * Index 2: fine
+     *
+     * @private
+     */
+    private bindGroups_depth?: GPUBindGroup[];
+    /**
+     * Bind groups for the render passes. One bind group per different shader.
+     * This is initialised when the buffer is written to the GPU.
+     *
+     * Index 0: coarse
+     * Index 1: medium
+     * Index 2: fine
+     *
+     * @private
+     */
+    private bindGroups_rendering?: GPUBindGroup[];
 
     private buffersReadyToWrite: boolean;
     private buffersInFlight: boolean;
@@ -521,5 +545,28 @@ export class Batch {
      */
     getBoundingBox(): number[] {
         return this._boundingBox;
+    }
+
+    create_bindGroups(uniformBuffer: GPUBuffer, depthBuffer: GPUBuffer, framebuffer: GPUBuffer, bindGroup_layouts: GPUBindGroupLayout[]): void {
+        const buffers_for_depth = [
+            uniformBuffer,
+            depthBuffer,
+        ]
+        const buffers_for_compute = [
+            uniformBuffer,
+            depthBuffer,
+            framebuffer,
+            this.getColorGPUBuffer()
+        ];
+
+        for (let i = 0; i < 3; i++) {
+            buffers_for_depth.push(this.getCoarseGPUBuffer());
+            buffers_for_compute.push(this.getCoarseGPUBuffer());
+
+            this.bindGroups_depth![i] = Util.createBindGroup(this._device, bindGroup_layouts[i], buffers_for_depth);
+            this.bindGroups_depth![i].label = 'bind group depth ' + i;
+            this.bindGroups_rendering![i] = Util.createBindGroup(this._device, bindGroup_layouts[i], buffers_for_compute);
+            this.bindGroups_rendering![i].label = 'bind group render ' + i;
+        }
     }
 }
