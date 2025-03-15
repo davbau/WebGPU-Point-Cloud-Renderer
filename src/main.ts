@@ -414,8 +414,6 @@ async function generateFrame() {
         }
         batches_renderType.push(accuracy_level);
 
-        const compute_depth_shader_bindGroupLayout = compute_depth_shader_bindGroupLayouts[accuracy_level];
-        const compute_shader_bindGroupLayout = compute_shader_bindGroupLayouts[accuracy_level];
         const computePipeline = compute_pipelines[accuracy_level];
         const compute_depth_pipeline = compute_depth_pipelines[accuracy_level];
 
