@@ -43,10 +43,11 @@ fn main(
     let Z = f32(p.z) * f32(uniforms.size.z / factor) + uniforms.origin.z;
 
     let pos = uniforms.mvp * vec4<f32>(X, Y, Z, 1.0);
+    let w = pos.w;
     let ndc = pos / pos.w;
 
     // Discard points behind the camera.
-    if (ndc.w < 0.0) {
+    if (w < 0.0) {
         return;
     }
 
@@ -66,7 +67,7 @@ fn main(
     let index = u32(screen_y) * u32(uniforms.canvas_size.x) + u32(screen_x);
 
     // compute depth
-    let uint_depth = bitcast<u32>(ndc.w);
+    let uint_depth = bitcast<u32>(w);
     atomicMin(&depthBuffer[index], uint_depth); // atomic min will do the calculation and store the result in depthBuffer[index].
 }
 

@@ -350,10 +350,10 @@ function resetViewport() {
 }
 
 const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(0xFFFFFFFF);
+// device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
 // unmap depth buffer
 depthBuffer.unmap();
 
-device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
 let numberOfPoints = 0;
 
 /**
@@ -373,7 +373,7 @@ async function generateFrame() {
 
 
     // reset depth buffer
-    // device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
+    device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
     const upload_waiter = batchHandler.writeOneBufferToGPU();
     const batches_shown: number[] = [];
     const batches_renderType: number[] = [];

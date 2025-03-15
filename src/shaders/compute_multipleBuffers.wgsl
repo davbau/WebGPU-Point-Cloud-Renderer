@@ -29,9 +29,7 @@ const factor = 1073741824; // 2^30
 /*M*/@group(0) @binding(5) var<storage, read> mediumBuffer: array<u32>;
 /*F*/@group(0) @binding(6) var<storage, read> fineBuffer: array<u32>;
 
-//@compute @workgroup_size(32, 1, 1)
 @compute @workgroup_size(64, 1, 1)
-//@compute @workgroup_size(128, 1, 1)
 fn main(
     @builtin(global_invocation_id) gid: vec3<u32>,
     @builtin(workgroup_id) wid: vec3<u32>,
@@ -53,10 +51,11 @@ fn main(
     let pos = uniforms.mvp * vec4<f32>(X, Y, Z, 1.0);
 
     // convert pos to ndc
+    let w = pos.w;
     let ndc = pos / pos.w;
 
     // Discard points behind the camera.
-    if (ndc.w < 0.0) {
+    if (w < 0.0) {
         return;
     }
 
@@ -81,10 +80,10 @@ fn main(
 
     // Compute threshold to be 2% more than the minimum depth.
     // So 2% of points further away from the minimum value will be kept and the rest discarded.
-    let depthThreshold = minDepth * 1.02;
+    let depthThreshold = minDepth * 1.001;
 
     // Discard points further away then the depth threshold.
-    if (ndc.w > depthThreshold) {
+    if (w > depthThreshold) {
         return;
     }
 
