@@ -1,14 +1,14 @@
-import { mat4, vec2, vec3 } from "webgpu-matrix";
+import {mat4, vec2, vec3} from "webgpu-matrix";
 
-import { Util } from "./utils/util";
-import { create_and_bind_quad_VertexBuffer } from "./utils/quad";
+import {Util} from "./utils/util";
+import {create_and_bind_quad_VertexBuffer} from "./utils/quad";
 import Stats from "stats.js";
-import { SIZE_OF_POINT } from "./types/c_equivalents";
-import { FileDropHandler } from "./dataHandling/FileDropHandler";
-import { GUI } from "dat.gui";
-import { BatchHandler } from "./dataHandling/BatchHandler";
-import { InputHandlerInertialTurntableCamera } from "./cameras/InputHandler-InertialTurntableCamera";
-import { InertialTurntableCamera } from "./cameras/InertialTurntableCamera";
+import {SIZE_OF_POINT} from "./types/c_equivalents";
+import {FileDropHandler} from "./dataHandling/FileDropHandler";
+import {GUI} from "dat.gui";
+import {BatchHandler} from "./dataHandling/BatchHandler";
+import {InputHandlerInertialTurntableCamera} from "./cameras/InputHandler-InertialTurntableCamera";
+import {InertialTurntableCamera} from "./cameras/InertialTurntableCamera";
 
 const canvas = document.getElementById("gfx-main") as HTMLCanvasElement;
 // // set max size of canvas
@@ -94,7 +94,7 @@ if (handler_threads_per_workgroup) {
             parseInt(handler_threads_per_workgroup),
             256
         ),
-    1);
+        1);
 }
 
 const container = document.getElementById("container") as HTMLDivElement;   // The container element
@@ -111,22 +111,24 @@ const params: {
 };
 gui.add(params, 'renderQuality', ['auto', 'coarse', "medium", "fine"]);
 gui.add(params, 'show_debug_div').onChange((value) => setDebugDivVisibility(value));
-gui.add({ view_to_model: resetViewport }, 'view_to_model');
+gui.add({view_to_model: resetViewport}, 'view_to_model');
 
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
 
 // Region pipeline
 import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
+
 const compute_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_shader, THREADS_PER_WORKGROUP, "compute");
 
 
 import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
+
 const compute_depth_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_depth_shader, THREADS_PER_WORKGROUP, "compute depth");
 
 
 import display_shader from "./shaders/display_on_screan.wgsl";
-import { log } from "console";
+import {log} from "console";
 
 const display_shaderModule = device.createShaderModule({
     label: "display shader module",
@@ -134,7 +136,7 @@ const display_shaderModule = device.createShaderModule({
 });
 const displayPipelineDescriptor = Util.createPipelineDescriptor_pos4_uv2(device, display_shaderModule, "vs_main", "fs_main", format);
 displayPipelineDescriptor.label = "display pipeline descriptor";
-displayPipelineDescriptor.primitive = { topology: 'triangle-strip' };
+displayPipelineDescriptor.primitive = {topology: 'triangle-strip'};
 const displayPipeline = device.createRenderPipeline(displayPipelineDescriptor);
 
 // Region Framebuffer
@@ -356,6 +358,84 @@ depthBuffer.unmap();
 
 let numberOfPoints = 0;
 
+type BatchInfo = {
+    isAvailable?: boolean;
+    renderType?: -1 | 0 | 1 | 2;
+    xWorkGroups?: number,
+    yWorkGroups?: number,
+    zWorkGroups?: number,
+    uniformBufferData?: Float32Array
+}
+const batchInfos: BatchInfo[] = [];
+
+function depthPass(commandEncoder: GPUCommandEncoder) {
+    for (let i = 0; i < batchHandler.getNumberOfBatches(); i++) {
+        const currentBatchInfo: BatchInfo = batchInfos[i];
+        if (!currentBatchInfo) {
+            continue;
+        }
+        if (!currentBatchInfo.isAvailable) {
+            continue;
+        }
+
+        const batch = batchHandler.getBatch(i);
+        device.queue.writeBuffer(
+            uniformBuffer,
+            0,
+            currentBatchInfo.uniformBufferData!.buffer,
+            currentBatchInfo.uniformBufferData!.byteOffset,
+            currentBatchInfo.uniformBufferData!.byteLength,
+        );
+
+        const compute_depth_shader_bindGroup = batch.get_depth_bindGroup(currentBatchInfo.renderType!);
+        const compute_depth_pipeline = compute_depth_pipelines[currentBatchInfo.renderType!];
+
+        const compute_depth_pass = commandEncoder.beginComputePass();
+        compute_depth_pass.setPipeline(compute_depth_pipeline);
+        compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup);
+        compute_depth_pass.dispatchWorkgroups(
+            Math.max(1, currentBatchInfo.xWorkGroups!),
+            Math.max(1, currentBatchInfo.yWorkGroups!),
+            Math.max(1, currentBatchInfo.zWorkGroups!),
+        );
+        compute_depth_pass.end();
+    }
+}
+
+function computePass(commandEncoder: GPUCommandEncoder) {
+    for (let i = 0; i < batchHandler.getNumberOfBatches(); i++) {
+        const currentBatchInfo: BatchInfo = batchInfos[i];
+        if (!currentBatchInfo) {
+            continue;
+        }
+        if (!currentBatchInfo.isAvailable) {
+            continue;
+        }
+
+        const batch = batchHandler.getBatch(i);
+        // device.queue.writeBuffer(
+        //     uniformBuffer,
+        //     0,
+        //     currentBatchInfo.uniformBufferData!.buffer,
+        //     currentBatchInfo.uniformBufferData!.byteOffset,
+        //     currentBatchInfo.uniformBufferData!.byteLength,
+        // );
+
+        const compute_shader_bindGroup = batch.get_compute_bindGroup(currentBatchInfo.renderType!);
+        const computePipeline = compute_pipelines[currentBatchInfo.renderType!];
+
+        const computePass = commandEncoder.beginComputePass();
+        computePass.setPipeline(computePipeline);
+        computePass.setBindGroup(0, compute_shader_bindGroup, [0]);
+        computePass.dispatchWorkgroups(
+            Math.max(1, currentBatchInfo.xWorkGroups!),
+            Math.max(1, currentBatchInfo.yWorkGroups!),
+            Math.max(1, currentBatchInfo.zWorkGroups!),
+        );
+        computePass.end();
+    }
+}
+
 /**
  * The main function that generates the frame. This function is called recursively using requestAnimationFrame.
  */
@@ -375,151 +455,88 @@ async function generateFrame() {
     // reset depth buffer
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
     const upload_waiter = batchHandler.writeOneBufferToGPU();
-    const batches_shown: number[] = [];
-    const batches_renderType: number[] = [];
 
-    // Workgroup initial values for later
-    let xWorkGroups = 1;
-    let yWorkGroups = 1;
-    let zWorkGroups = 1;
+    // get information about the batches.
+    for (let i = 0; i < batchHandler.getNumberOfBatches(); i++) {
+        const batch = batchHandler.getBatch(i);
+        const currentBatchInfo: BatchInfo = {};
 
-    // go through all the batches and render visible ones
-    for (const batch of batchHandler.getBatches()) {
         if (!batch.isWrittenToGPU()) {
+            currentBatchInfo.isAvailable = false;
             continue;
         }
         if (!batch.isOnScreen(mVP)) {
             // console.log(`batch ${batch.getID()} not on screen`);
-            batches_renderType.push(-1);
+            currentBatchInfo.isAvailable = false;
+            currentBatchInfo.renderType = -1;
             continue;
-        } else {
-            batches_shown.push(batch.getID());
         }
+        // if (!(batch.getID() in [0])) {
+        //     currentBatchInfo.isAvailable = false;
+        //     currentBatchInfo.renderType = -1;
+        //     continue;
+        // }
+        currentBatchInfo.isAvailable = true;
 
         // Region accuracy Level
         let accuracy_level = 2;
         switch (params.renderQuality) {
             case "auto":
-                accuracy_level = batch.getAccuracyLevel(mVP);
+                // accuracy_level = batch.getAccuracyLevel(mVP);
+                currentBatchInfo.renderType = batch.getAccuracyLevel(mVP);
                 break;
             case "coarse":
-                accuracy_level = 0;
+                // accuracy_level = 0;
+                currentBatchInfo.renderType = 0;
                 break;
             case "medium":
-                accuracy_level = 1;
+                // accuracy_level = 1;
+                currentBatchInfo.renderType = 1;
                 break;
             case "fine":
-                accuracy_level = 2;
+                // accuracy_level = 2;
+                currentBatchInfo.renderType = 2;
                 break;
         }
-        batches_renderType.push(accuracy_level);
+        // batches_renderType.push(accuracy_level);
 
-        const computePipeline = compute_pipelines[accuracy_level];
-        const compute_depth_pipeline = compute_depth_pipelines[accuracy_level];
+        // Region Workgroups
+        const totalWorkGroups = Math.ceil(batch.getFilledSize() / THREADS_PER_WORKGROUP);
 
-        // Region Uniform
-        // building the uniform buffer data
-        const uniform_data = new Float32Array([
-            screen_size[0], screen_size[1], 0, 0, // padding
+        if (totalWorkGroups <= device.limits.maxComputeWorkgroupsPerDimension) {
+            currentBatchInfo.xWorkGroups = totalWorkGroups;
+            currentBatchInfo.yWorkGroups = 1;
+        } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 2)) {
+            currentBatchInfo.yWorkGroups = Math.ceil(totalWorkGroups / device.limits.maxComputeWorkgroupsPerDimension);
+            currentBatchInfo.xWorkGroups = Math.ceil(totalWorkGroups / currentBatchInfo.yWorkGroups);
+        }
+        currentBatchInfo.zWorkGroups = 1;
+
+        currentBatchInfo.uniformBufferData = new Float32Array([
+            screen_size[0],
+            screen_size[1],
+            0, 0, // padding
             ...mVP,
             ...batch.getOrigin(), 0,
             ...batch.getBoxSize(), 0,
             accuracy_level, 0, 0, 0,
         ]);
-        device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
 
-        let nr_pointsInCurrentBuffer = batch.filledSize();
+        batchInfos.push(currentBatchInfo);
+        numberOfPoints += batch.getFilledSize();
+    }
+    depthPass(commandEncoder);
+    computePass(commandEncoder);
 
-        // Region Workgroups
-        const totalWorkGroups = Math.ceil(nr_pointsInCurrentBuffer / THREADS_PER_WORKGROUP);
-
-        if (totalWorkGroups <= device.limits.maxComputeWorkgroupsPerDimension) {
-            xWorkGroups = totalWorkGroups;
-        } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 2)) {
-            yWorkGroups = Math.ceil(totalWorkGroups / device.limits.maxComputeWorkgroupsPerDimension);
-            xWorkGroups = Math.ceil(totalWorkGroups / yWorkGroups);
-        }
-
-        // Region BindGroup
-        // Currently left for performance comparison.
-        /*
-        const buffers_for_depth = [
-            uniformBuffer,
-            depthBuffer,
-        ]
-        const buffers_for_compute = [
-            uniformBuffer,
-            depthBuffer,
-            framebuffer,
-            batch.getColorGPUBuffer()
-        ];
-        if (accuracy_level >= 0) {
-            buffers_for_depth.push(batch.getCoarseGPUBuffer());
-            buffers_for_compute.push(batch.getCoarseGPUBuffer());
-        }
-        if (accuracy_level >= 1) {
-            buffers_for_depth.push(batch.getMediumGPUBuffer());
-            buffers_for_compute.push(batch.getMediumGPUBuffer());
-        }
-        if (accuracy_level >= 2) {
-            buffers_for_depth.push(batch.getFineGPUBuffer());
-            buffers_for_compute.push(batch.getFineGPUBuffer());
-        }
-
-
-        const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, buffers_for_depth);
-        const compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, buffers_for_compute);
-         */
-
-        const compute_depth_shader_bindGroup = batch.get_depth_bindGroup(accuracy_level);
-        const compute_shader_bindGroup = batch.get_compute_bindGroup(accuracy_level);
-
-        // Region Compute Depth Pass
-        const compute_depth_pass = commandEncoder.beginComputePass();
-        compute_depth_pass.setPipeline(compute_depth_pipeline);
-        compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup);
-        compute_depth_pass.dispatchWorkgroups(
-            Math.max(1, xWorkGroups),
-            Math.max(1, yWorkGroups),
-            Math.max(1, zWorkGroups));
-        compute_depth_pass.end();
-
-        // Region Compute Pass
-        const computePass = commandEncoder.beginComputePass();
-        computePass.setPipeline(computePipeline);
-        computePass.setBindGroup(0, compute_shader_bindGroup);
-        computePass.dispatchWorkgroups(
-            Math.max(1, xWorkGroups),
-            Math.max(1, yWorkGroups),
-            Math.max(1, zWorkGroups));
-        computePass.end();
-
-        device.queue.submit([commandEncoder.finish()]);
-        commandEncoder = device.createCommandEncoder();
-
-        numberOfPoints += nr_pointsInCurrentBuffer;
+    while (batchInfos.length > 0) {
+        batchInfos.pop();
     }
 
-    if (debug_div.checkVisibility()) {
-        debug_div.innerText = `Number of points: ${Util.segmentNumber(numberOfPoints)},
-        Number of points per batch: ${Util.segmentNumber(batchHandler.getBatch(0).getBatchSize())},
-        Number of batches: ${batchHandler.numberOfBuffers()},
-        Batches shown: ${batches_shown.join("\t")},
-        Batches render type: ${batches_renderType.join("\t")},
-        TpW: ${THREADS_PER_WORKGROUP},
-        Workgroups: ${xWorkGroups} x ${yWorkGroups} x ${zWorkGroups},
-        vp matrix: 
-        ${formatF32ArrayAsMatrix(camera.getViewMatrix())}
-        mvp matrix: 
-        ${formatF32ArrayAsMatrix(mVP)},
-        `;
-    }
-
+    // Region Display Pass
     // reset viewport
     (display_renderPassDescriptor.colorAttachments as GPURenderPassColorAttachment[])[0]
         .view = context.getCurrentTexture().createView();
 
-    // Region Display Pass
     const displayPass = commandEncoder.beginRenderPass(display_renderPassDescriptor);
     displayPass.setPipeline(displayPipeline);
     displayPass.setBindGroup(0, display_shader_bindGroup);
@@ -541,6 +558,8 @@ async function generateFrame() {
 }
 
 requestAnimationFrame(generateFrame);
+
+
 
 function formatF32ArrayAsMatrix(float32Array: Float32Array): string {
     const helper = mat4.transpose(float32Array);

@@ -477,7 +477,7 @@ export class Batch {
     /**
      * Returns the number of points actually loaded in the batch.
      */
-    filledSize() {
+    getFilledSize() {
         return this._filledSize;
     }
 
@@ -521,7 +521,7 @@ export class Batch {
      * 0: coarse, 1: medium, 2: fine.
      * @param mVP The model view projection matrix.
      */
-    getAccuracyLevel(mVP: Float32Array) {
+    getAccuracyLevel(mVP: Float32Array): -1 | 0 | 1 | 2 {
         const cornersOnScreen = this.getBoundingBoxOnScreen(mVP);
 
         // default to coarse level of detail
@@ -554,7 +554,7 @@ export class Batch {
             accuracyLevel = 2;
         }
 
-        return accuracyLevel;
+        return accuracyLevel as unknown as -1 | 0 | 1 | 2;
     }
 
     /**

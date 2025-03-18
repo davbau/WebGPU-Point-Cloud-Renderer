@@ -106,7 +106,7 @@ export class BatchHandler {
 
         while (remainingData.byteLength > 0) {
             const currentBatch = this._batches[this._batches.length - 1];
-            const currentBatchFilledSize = currentBatch.filledSize();
+            const currentBatchFilledSize = currentBatch.getFilledSize();
             const remainingSpace = this._batchSize - currentBatchFilledSize;
 
             const dataToWrite = remainingData.slice(0, remainingSpace);
@@ -137,7 +137,7 @@ export class BatchHandler {
     /**
      * Get the number of batches in the batch handler.
      */
-    numberOfBuffers(): number {
+    getNumberOfBatches(): number {
         return this._batches.length;
     }
 
