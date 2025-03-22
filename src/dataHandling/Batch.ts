@@ -2,15 +2,6 @@ import {mat4, vec2, vec3, vec4} from "webgpu-matrix";
 import {u_int32} from "../types/c_equivalents";
 import {Util} from "../utils/util";
 
-type UniformType = {
-    // origin of the bounding box, will be padded to vec4 = 16 bytes
-    origin: vec3.default;
-    // size of the bounding box, will be padded to vec4 = 16 bytes
-    size: vec3.default;
-    // 0: coarse, 1: medium, 2: fine. Won't be padded.
-    renderMode: u_int32;
-}
-
 /**
  * One Batch with a set number of points.
  * Used in the {@Link BatchHandler} container class.
@@ -106,6 +97,13 @@ export class Batch {
 
     private _compute_depth_shader_bindGroupLayouts: GPUBindGroupLayout[];
     private _compute_shader_bindGroupLayouts: GPUBindGroupLayout[];
+
+    private uniformBuffer_size = 4 * Float32Array.BYTES_PER_ELEMENT    // canvas width, height, 2x padding
+        + 16 * Float32Array.BYTES_PER_ELEMENT    // mVP
+        + 4 * Float32Array.BYTES_PER_ELEMENT     // Batch origin
+        + 4 * Float32Array.BYTES_PER_ELEMENT     // Batch size
+        + 4 * Float32Array.BYTES_PER_ELEMENT;    // render type
+
 
     private _uniformBuffer: GPUBuffer;
     private _depthBuffer: GPUBuffer;
@@ -381,29 +379,36 @@ export class Batch {
     /**
      * Write the uniform data to the uniform buffer. The render mode is used to determine the level of detail to render.
      * This function should be called before rendering the batch.
+     * @param screen_size
+     * @param mVP
      * @param renderMode 0: coarse, 1: medium, 2: fine.
      */
-    getUniformData(renderMode: u_int32) {
-        // Update the uniform data
-        const origin = this.getOrigin();
-        const size = this.getBoxSize();
-        const uniformData: UniformType = {
-            origin: vec4.fromValues(origin[0], origin[1], origin[2], 0),
-            size: vec4.fromValues(size[0], size[1], size[2], 0),
-            renderMode: renderMode,
-        };
+    get_dynamicUniform_Data(screen_size: vec2.default, mVP: Float32Array, renderMode: u_int32): Float32Array {
+        // const uniformArray = new Float32Array(4 * 2 + 1);
+        // const uniformArrayView = new DataView(uniformArray.buffer);
+        // uniformArrayView.setFloat32(0, this.getOrigin()[0], true);
+        // uniformArrayView.setFloat32(4, this.getOrigin()[1], true);
+        // uniformArrayView.setFloat32(8, this.getOrigin()[2], true);
+        //
+        // uniformArrayView.setFloat32(16, this.getBoxSize()[0], true);
+        // uniformArrayView.setFloat32(20, this.getBoxSize()[1], true);
+        // uniformArrayView.setFloat32(24, this.getBoxSize()[2], true);
+        //
+        // uniformArrayView.setUint32(32, renderMode, true);
 
-        const uniformArray = new Float32Array(4 * 2 + 1);
-        const uniformArrayView = new DataView(uniformArray.buffer);
-        uniformArrayView.setFloat32(0, uniformData.origin[0], true);
-        uniformArrayView.setFloat32(4, uniformData.origin[1], true);
-        uniformArrayView.setFloat32(8, uniformData.origin[2], true);
+        return new Float32Array([
+            screen_size[0],
+            screen_size[1],
+            0, 0, // padding
+            ...mVP,
+            ...this.getOrigin(), 0,
+            ...this.getBoxSize(), 0,
+            renderMode, 0, 0, 0,
+        ]);
+    }
 
-        uniformArrayView.setFloat32(16, uniformData.size[0], true);
-        uniformArrayView.setFloat32(20, uniformData.size[1], true);
-        uniformArrayView.setFloat32(24, uniformData.size[2], true);
-
-        uniformArrayView.setUint32(32, uniformData.renderMode, true);
+    get_dynamicUniform_offset() {
+        return this._uniformBuffer.size * this.getID();
     }
 
     /**
@@ -594,7 +599,6 @@ export class Batch {
         if (this.bindGroups_depth)
             return this.bindGroups_depth[type];
         return null;
-
     }
 
     get_compute_bindGroup(type: number): GPUBindGroup | null {

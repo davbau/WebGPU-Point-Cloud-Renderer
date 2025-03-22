@@ -119,16 +119,17 @@ const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
 // Region pipeline
 import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
 
-const compute_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_shader, THREADS_PER_WORKGROUP, "compute");
+const compute_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_shader, THREADS_PER_WORKGROUP, "compute", false);
 
 
 import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
 
-const compute_depth_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_depth_shader, THREADS_PER_WORKGROUP, "compute depth");
+const compute_depth_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_depth_shader, THREADS_PER_WORKGROUP, "compute depth", true);
 
 
 import display_shader from "./shaders/display_on_screan.wgsl";
 import {log} from "console";
+import {UniformBufferHandler} from "./dataHandling/UniformBufferHandler";
 
 const display_shaderModule = device.createShaderModule({
     label: "display shader module",
@@ -207,7 +208,7 @@ const uniformBuffer = device.createBuffer({
 const compute_depth_shader_bindGroupLayouts = compute_depth_pipelines.map(pipeline => pipeline.getBindGroupLayout(0));
 compute_depth_shader_bindGroupLayouts.forEach((layout, index) => {
     layout.label = "compute depth pipeline layout" +
-        (index === 0 ? " coarse" : index === 1 ? " medium" : " fine")
+        (index === 0 ? " coarse" : index === 1 ? " medium" : " fine");
 });
 
 const compute_shader_bindGroupLayouts = compute_pipelines.map(pipeline => pipeline.getBindGroupLayout(0));
@@ -297,6 +298,9 @@ const fileDropHandler = new FileDropHandler(
     BUFFER_HANDLER_SIZE);
 let batchHandler = fileDropHandler.getBatchHandler();
 
+const uniformBuffer_Handler = new UniformBufferHandler(device, [], screen_size, mVP);
+let batches_added = false;
+
 // Region setup stats
 const stats = new Stats();
 stats.showPanel(0);
@@ -358,7 +362,7 @@ depthBuffer.unmap();
 
 let numberOfPoints = 0;
 
-type BatchInfo = {
+export type BatchInfo = {
     isAvailable?: boolean;
     renderType?: -1 | 0 | 1 | 2;
     xWorkGroups?: number,
@@ -379,20 +383,20 @@ function depthPass(commandEncoder: GPUCommandEncoder) {
         }
 
         const batch = batchHandler.getBatch(i);
-        device.queue.writeBuffer(
-            uniformBuffer,
-            0,
-            currentBatchInfo.uniformBufferData!.buffer,
-            currentBatchInfo.uniformBufferData!.byteOffset,
-            currentBatchInfo.uniformBufferData!.byteLength,
-        );
+        // device.queue.writeBuffer(
+        //     uniformBuffer,
+        //     0,
+        //     currentBatchInfo.uniformBufferData!.buffer,
+        //     currentBatchInfo.uniformBufferData!.byteOffset,
+        //     currentBatchInfo.uniformBufferData!.byteLength,
+        // );
 
         const compute_depth_shader_bindGroup = batch.get_depth_bindGroup(currentBatchInfo.renderType!);
         const compute_depth_pipeline = compute_depth_pipelines[currentBatchInfo.renderType!];
 
         const compute_depth_pass = commandEncoder.beginComputePass();
         compute_depth_pass.setPipeline(compute_depth_pipeline);
-        compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup);
+        compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup, [batch.get_dynamicUniform_offset()]);
         compute_depth_pass.dispatchWorkgroups(
             Math.max(1, currentBatchInfo.xWorkGroups!),
             Math.max(1, currentBatchInfo.yWorkGroups!),
@@ -426,7 +430,7 @@ function computePass(commandEncoder: GPUCommandEncoder) {
 
         const computePass = commandEncoder.beginComputePass();
         computePass.setPipeline(computePipeline);
-        computePass.setBindGroup(0, compute_shader_bindGroup, [0]);
+        computePass.setBindGroup(0, compute_shader_bindGroup, [batch.get_dynamicUniform_offset()]);
         computePass.dispatchWorkgroups(
             Math.max(1, currentBatchInfo.xWorkGroups!),
             Math.max(1, currentBatchInfo.yWorkGroups!),
@@ -512,19 +516,23 @@ async function generateFrame() {
         }
         currentBatchInfo.zWorkGroups = 1;
 
-        currentBatchInfo.uniformBufferData = new Float32Array([
-            screen_size[0],
-            screen_size[1],
-            0, 0, // padding
-            ...mVP,
-            ...batch.getOrigin(), 0,
-            ...batch.getBoxSize(), 0,
-            accuracy_level, 0, 0, 0,
-        ]);
+        // currentBatchInfo.uniformBufferData = new Float32Array([
+        //     screen_size[0],
+        //     screen_size[1],
+        //     0, 0, // padding
+        //     ...mVP,
+        //     ...batch.getOrigin(), 0,
+        //     ...batch.getBoxSize(), 0,
+        //     accuracy_level, 0, 0, 0,
+        // ]);
 
         batchInfos.push(currentBatchInfo);
         numberOfPoints += batch.getFilledSize();
     }
+    const renderTypes: number[] = batchInfos.map(e => {
+        return e.renderType
+    }) as unknown as number[];
+    uniformBuffer_Handler.update_uniforms(batchHandler.getBatches(), renderTypes);
     depthPass(commandEncoder);
     computePass(commandEncoder);
 
@@ -558,7 +566,6 @@ async function generateFrame() {
 }
 
 requestAnimationFrame(generateFrame);
-
 
 
 function formatF32ArrayAsMatrix(float32Array: Float32Array): string {

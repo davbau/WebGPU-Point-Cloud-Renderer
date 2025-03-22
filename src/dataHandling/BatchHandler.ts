@@ -1,5 +1,6 @@
 import {vec2} from "webgpu-matrix";
 import {Batch} from "./Batch";
+import {UniformBufferHandler} from "./UniformBufferHandler";
 
 export class BatchHandler {
     private counter: number = 0;

@@ -1,4 +1,5 @@
 import {char, Point, u_int32} from "../types/c_equivalents";
+import {ShaderHelper} from "../shaders/ShaderHelper";
 
 export class Util {
     /**
@@ -97,21 +98,54 @@ export class Util {
      * @param workgroup_size The workgroup size for the shader.
      * @param label The label for the pipelines. This will be appended to and used to label the shader modules as well. Name this only something like "compute" without appending "pipeline" or "shader module" yourself.
      */
-    static create_compute_Pipelines_with_settings(device: GPUDevice, code: string, workgroup_size: number, label: string): GPUComputePipeline[] {
+    static create_compute_Pipelines_with_settings(device: GPUDevice, code: string, workgroup_size: number, label: string, depth: boolean): GPUComputePipeline[] {
         const shader_modules = [
             Util.create_shaderModule_with_settings(device, code, "C", workgroup_size, label + " shader module coarse"),
             Util.create_shaderModule_with_settings(device, code, "M", workgroup_size, label + " shader module medium"),
             Util.create_shaderModule_with_settings(device, code, "F", workgroup_size, label + " shader module fine")
-        ]
+        ];
 
-        const descriptor: GPUComputePipelineDescriptor = {
-            layout: "auto",
-            compute: {
-                module: null as any as GPUShaderModule,
-                entryPoint: "main"
-            }
+        const bindGroupLayouts: GPUBindGroupLayout[] = [];
+        const bindGroupLayout_Entries: GPUBindGroupLayoutEntry[] = [
+            ShaderHelper.gpuPipelineLayoutEntry_uniform,
+            ShaderHelper.gpuPipelineLayoutEntry_depth,
+        ];
+
+        if (!depth) {
+            bindGroupLayout_Entries.push(ShaderHelper.gpuPipelineLayoutEntry_frame);
+            bindGroupLayout_Entries.push(ShaderHelper.gpuPipelineLayoutEntry_color);
         }
+        bindGroupLayout_Entries.push(ShaderHelper.gpuPipelineLayoutEntry_coarse);
+
+        // Create the bind group layouts
+        bindGroupLayouts.push(device.createBindGroupLayout({
+            entries: bindGroupLayout_Entries
+        }));
+
+        bindGroupLayout_Entries.push(ShaderHelper.gpuPipelineLayoutEntry_medium);
+        bindGroupLayouts.push(device.createBindGroupLayout({
+            entries: bindGroupLayout_Entries
+        }));
+
+        bindGroupLayout_Entries.push(ShaderHelper.gpuPipelineLayoutEntry_fine);
+        bindGroupLayouts.push(device.createBindGroupLayout({
+            entries: bindGroupLayout_Entries
+        }));
+
+        const GPUComputePipelineDescriptors: GPUComputePipelineDescriptor[] = [];
+        bindGroupLayouts.forEach(layout => {
+            const descriptor: GPUComputePipelineDescriptor = {
+                layout: device.createPipelineLayout({bindGroupLayouts: [layout]}),
+                compute: {
+                    module: null as any as GPUShaderModule,
+                    entryPoint: "main"
+                }
+            };
+            GPUComputePipelineDescriptors.push(descriptor);
+        })
+
         return shader_modules.map((module, index) => {
+            const descriptor = GPUComputePipelineDescriptors[index];
             descriptor.compute.module = module;
             descriptor.label = label + " pipeline " + (index === 0 ? "coarse" : index === 1 ? "medium" : "fine");
             return device.createComputePipeline(descriptor);
@@ -175,7 +209,7 @@ export class Util {
             } else if (trimmed.startsWith("/*")) {
                 // keep = trimmed.startsWith("/*" + type);
                 const c = trimmed.charAt(2);
-                if(include_lowers.includes(c)) result += lines[i] + "\n";
+                if (include_lowers.includes(c)) result += lines[i] + "\n";
             } else if (i < lines.length) result += lines[i] + "\n";
             // keep = true;
 

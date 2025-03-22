@@ -20,10 +20,10 @@ const factor = 1073741823.0; // 0b0011_1111_1111_1111_1111_1111_1111_1111
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> depthBuffer: array<atomic<u32>>;
 
-/*C*/@group(0) @binding(2) var<storage, read> courseBuffer: array<u32>;
-/*M*/@group(0) @binding(3) var<storage, read> mediumBuffer: array<u32>;
-/*F*/@group(0) @binding(4) var<storage, read> fineBuffer: array<u32>;
-// We don't need the color buffer for depth computation.
+// We don't need the color buffer (binding 2) for depth computation.
+/*C*/@group(0) @binding(4) var<storage, read> courseBuffer: array<u32>;
+/*M*/@group(0) @binding(5) var<storage, read> mediumBuffer: array<u32>;
+/*F*/@group(0) @binding(6) var<storage, read> fineBuffer: array<u32>;
 
 @compute @workgroup_size(64, 1, 1)
 fn main(
