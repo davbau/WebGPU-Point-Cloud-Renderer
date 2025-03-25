@@ -371,7 +371,6 @@ async function generateFrame() {
     mat4.multiply(camera.getProjectionMatrix(), camera.getViewMatrix(), mVP);
     mat4.multiply(mVP, modelMatrix, mVP);
 
-
     // reset depth buffer
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
     const upload_waiter = batchHandler.writeOneBufferToGPU();
@@ -414,7 +413,6 @@ async function generateFrame() {
         }
         batches_renderType.push(accuracy_level);
 
-        const computePipeline = compute_pipelines[accuracy_level];
         const compute_depth_pipeline = compute_depth_pipelines[accuracy_level];
 
         // Region Uniform
@@ -440,39 +438,7 @@ async function generateFrame() {
             xWorkGroups = Math.ceil(totalWorkGroups / yWorkGroups);
         }
 
-        // Region BindGroup
-        // Currently left for performance comparison.
-        /*
-        const buffers_for_depth = [
-            uniformBuffer,
-            depthBuffer,
-        ]
-        const buffers_for_compute = [
-            uniformBuffer,
-            depthBuffer,
-            framebuffer,
-            batch.getColorGPUBuffer()
-        ];
-        if (accuracy_level >= 0) {
-            buffers_for_depth.push(batch.getCoarseGPUBuffer());
-            buffers_for_compute.push(batch.getCoarseGPUBuffer());
-        }
-        if (accuracy_level >= 1) {
-            buffers_for_depth.push(batch.getMediumGPUBuffer());
-            buffers_for_compute.push(batch.getMediumGPUBuffer());
-        }
-        if (accuracy_level >= 2) {
-            buffers_for_depth.push(batch.getFineGPUBuffer());
-            buffers_for_compute.push(batch.getFineGPUBuffer());
-        }
-
-
-        const compute_depth_shader_bindGroup = Util.createBindGroup(device, compute_depth_shader_bindGroupLayout, buffers_for_depth);
-        const compute_shader_bindGroup = Util.createBindGroup(device, compute_shader_bindGroupLayout, buffers_for_compute);
-         */
-
         const compute_depth_shader_bindGroup = batch.get_depth_bindGroup(accuracy_level);
-        const compute_shader_bindGroup = batch.get_compute_bindGroup(accuracy_level);
 
         // Region Compute Depth Pass
         const compute_depth_pass = commandEncoder.beginComputePass();
@@ -483,6 +449,76 @@ async function generateFrame() {
             Math.max(1, yWorkGroups),
             Math.max(1, zWorkGroups));
         compute_depth_pass.end();
+
+        device.queue.submit([commandEncoder.finish()]);
+        commandEncoder = device.createCommandEncoder();
+
+        numberOfPoints += nr_pointsInCurrentBuffer;
+    }
+
+    // Workgroup initial values for later
+    xWorkGroups = 1;
+    yWorkGroups = 1;
+    zWorkGroups = 1;
+
+    // go through all the batches and render visible ones
+    for (const batch of batchHandler.getBatches()) {
+        if (!batch.isWrittenToGPU()) {
+            continue;
+        }
+        if (!batch.isOnScreen(mVP)) {
+            // console.log(`batch ${batch.getID()} not on screen`);
+            batches_renderType.push(-1);
+            continue;
+        } else {
+            batches_shown.push(batch.getID());
+        }
+
+        // Region accuracy Level
+        let accuracy_level = 2;
+        switch (params.renderQuality) {
+            case "auto":
+                accuracy_level = batch.getAccuracyLevel(mVP);
+                break;
+            case "coarse":
+                accuracy_level = 0;
+                break;
+            case "medium":
+                accuracy_level = 1;
+                break;
+            case "fine":
+                accuracy_level = 2;
+                break;
+        }
+        batches_renderType.push(accuracy_level);
+
+        const computePipeline = compute_pipelines[accuracy_level];
+
+        // Region Uniform
+        // building the uniform buffer data
+        const uniform_data = new Float32Array([
+            screen_size[0], screen_size[1], 0, 0, // padding
+            ...mVP,
+            ...batch.getOrigin(), 0,
+            ...batch.getBoxSize(), 0,
+            accuracy_level, 0, 0, 0,
+        ]);
+        device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
+
+        let nr_pointsInCurrentBuffer = batch.filledSize();
+
+        // Region Workgroups
+        const totalWorkGroups = Math.ceil(nr_pointsInCurrentBuffer / THREADS_PER_WORKGROUP);
+
+        if (totalWorkGroups <= device.limits.maxComputeWorkgroupsPerDimension) {
+            xWorkGroups = totalWorkGroups;
+        } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 2)) {
+            yWorkGroups = Math.ceil(totalWorkGroups / device.limits.maxComputeWorkgroupsPerDimension);
+            xWorkGroups = Math.ceil(totalWorkGroups / yWorkGroups);
+        }
+
+        const compute_shader_bindGroup = batch.get_compute_bindGroup(accuracy_level);
+
 
         // Region Compute Pass
         const computePass = commandEncoder.beginComputePass();
