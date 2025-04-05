@@ -209,9 +209,9 @@ const uniformBuffer = device.createBuffer({
 export const uniformBufferSizeWithAlignment = Math.ceil(uniformBuffer.size / dynamicUniformAlignment) * dynamicUniformAlignment;
 let dynamicUniformBuffer = device.createBuffer({
     label: "dynamic uniform buffer",
-    size: uniformBufferSizeWithAlignment * 20,
+    size: uniformBufferSizeWithAlignment * 100,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-})
+});
 
 function updateDynamicUniformBuffer(batchHandler: BatchHandler, mvp: Float32Array) {
     // TODO: check if we need to rebuild the dynamic uniform buffer (more data loaded between frames)
@@ -231,7 +231,8 @@ function updateDynamicUniformBuffer(batchHandler: BatchHandler, mvp: Float32Arra
         ]);
 
         dynamicUniformData.set(currentBatch, offset);
-        offset += uniformBufferSizeWithAlignment;
+        // offset += uniformBufferSizeWithAlignment;
+        offset += uniformBufferSizeWithAlignment / Float32Array.BYTES_PER_ELEMENT;
     }
 
     device.queue.writeBuffer(dynamicUniformBuffer, 0, dynamicUniformData.buffer, dynamicUniformData.byteOffset, dynamicUniformData.byteLength);
@@ -435,7 +436,8 @@ async function generateFrame() {
 
     // go through all the batches and render visible ones
     for (const batch of batchHandler.getBatches()) {
-        if (!batch.isWrittenToGPU() || batch.getID() != 0) {
+        // if (!batch.isWrittenToGPU() || batch.getID() != 0) {
+        if (!batch.isWrittenToGPU()) {
             continue;
         }
         if (!batch.isOnScreen(mVP)) {
@@ -495,6 +497,7 @@ async function generateFrame() {
         const compute_depth_pass = commandEncoder.beginComputePass();
         compute_depth_pass.setPipeline(compute_depth_pipeline);
         compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup, [batch.getID() * uniformBufferSizeWithAlignment]);
+        // compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup, [256]);
         compute_depth_pass.dispatchWorkgroups(
             Math.max(1, xWorkGroups),
             Math.max(1, yWorkGroups),
@@ -514,7 +517,8 @@ async function generateFrame() {
 
     // go through all the batches and render visible ones
     for (const batch of batchHandler.getBatches()) {
-        if (!batch.isWrittenToGPU() || batch.getID() != 0) {
+        // if (!batch.isWrittenToGPU() || batch.getID() != 0) {
+        if (!batch.isWrittenToGPU()) {
             continue;
         }
         if (!batch.isOnScreen(mVP)) {
@@ -575,6 +579,7 @@ async function generateFrame() {
         const computePass = commandEncoder.beginComputePass();
         computePass.setPipeline(computePipeline);
         computePass.setBindGroup(0, compute_shader_bindGroup, [batch.getID() * uniformBufferSizeWithAlignment]);
+        // computePass.setBindGroup(0, compute_shader_bindGroup, [256]);
         computePass.dispatchWorkgroups(
             Math.max(1, xWorkGroups),
             Math.max(1, yWorkGroups),
