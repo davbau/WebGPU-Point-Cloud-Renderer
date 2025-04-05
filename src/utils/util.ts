@@ -1,4 +1,5 @@
 import {char, Point, u_int32} from "../types/c_equivalents";
+import {uniformBufferSizeWithAlignment} from "../main";
 
 export class Util {
     /**
@@ -59,10 +60,14 @@ export class Util {
             return {
                 binding: i,
                 resource: {
-                    buffer: buffer
+                    buffer: buffer,
+                    size: buffer.size
                 }
-            };
+            } as GPUBindGroupEntry;
         });
+
+        // fix dynamic uniform size alignment
+        (entries[0].resource as GPUBufferBinding).size = uniformBufferSizeWithAlignment;
 
         return device.createBindGroup({
             layout: layout,
@@ -97,25 +102,148 @@ export class Util {
      * @param workgroup_size The workgroup size for the shader.
      * @param label The label for the pipelines. This will be appended to and used to label the shader modules as well. Name this only something like "compute" without appending "pipeline" or "shader module" yourself.
      */
-    static create_compute_Pipelines_with_settings(device: GPUDevice, code: string, workgroup_size: number, label: string): GPUComputePipeline[] {
+    static create_compute_Pipelines_with_settings(device: GPUDevice, code: string, workgroup_size: number, label: string, bindGroupLayouts: GPUBindGroupLayout[]): GPUComputePipeline[] {
         const shader_modules = [
             Util.create_shaderModule_with_settings(device, code, "C", workgroup_size, label + " shader module coarse"),
             Util.create_shaderModule_with_settings(device, code, "M", workgroup_size, label + " shader module medium"),
             Util.create_shaderModule_with_settings(device, code, "F", workgroup_size, label + " shader module fine")
-        ]
+        ];
+
+        const pipelineLayouts: GPUPipelineLayout[] = bindGroupLayouts.map((bgl, index) => {
+            return device.createPipelineLayout({
+                label: label + " pipeline layout " + Util.render_mode_toString(index),
+                bindGroupLayouts: [bgl],
+            });
+        });
 
         const descriptor: GPUComputePipelineDescriptor = {
-            layout: "auto",
+            layout: null as any as GPUPipelineLayout,
             compute: {
                 module: null as any as GPUShaderModule,
                 entryPoint: "main"
             }
-        }
+        };
+
         return shader_modules.map((module, index) => {
+            descriptor.layout = pipelineLayouts[index];
             descriptor.compute.module = module;
-            descriptor.label = label + " pipeline " + (index === 0 ? "coarse" : index === 1 ? "medium" : "fine");
+            descriptor.label = label + " pipeline " + Util.render_mode_toString(index);
             return device.createComputePipeline(descriptor);
         });
+    }
+
+    /**
+     * Convert a render mode to a string.
+     * @param renderMode The render mode to convert.
+     * @returns {string} The string representation of the render mode. "coarse", "medium" or "fine".
+     */
+    static render_mode_toString(renderMode: number): string {
+        switch (renderMode) {
+            case 0:
+                return "coarse";
+            case 1:
+                return "medium";
+            case 2:
+                return "fine";
+            default:
+                return "unknown";
+        }
+    }
+
+    static create_bindGroupLayouts_compute(device: GPUDevice, label: string) {
+        const entries: GPUBindGroupLayoutEntry[] = [
+            Util.create_bindGroupLayoutEntry(0, GPUShaderStage.COMPUTE, "uniform", true),   // uniform
+            Util.create_bindGroupLayoutEntry(1, GPUShaderStage.COMPUTE, "storage", false),  // depth buffer
+            Util.create_bindGroupLayoutEntry(2, GPUShaderStage.COMPUTE, "storage", false),  // frame buffer
+            Util.create_bindGroupLayoutEntry(3, GPUShaderStage.COMPUTE, "read-only-storage", false),  // color buffer
+            Util.create_bindGroupLayoutEntry(4, GPUShaderStage.COMPUTE, "read-only-storage", false),  // coarse buffer
+        ];
+        const layouts: GPUBindGroupLayout[] = [
+            device.createBindGroupLayout({
+                label: label + " coarse",
+                entries: entries,
+            })
+        ];
+
+        // entries.push(Util.create_bindGroupLayoutEntry(5, GPUShaderStage.COMPUTE, "read-only-storage", false)); // medium buffer
+        layouts.push(device.createBindGroupLayout({
+            label: label + " medium",
+            entries: [
+                ...entries,
+                Util.create_bindGroupLayoutEntry(5, GPUShaderStage.COMPUTE, "read-only-storage", false)
+            ]
+        }));
+
+        // entries.push(Util.create_bindGroupLayoutEntry(6, GPUShaderStage.COMPUTE, "read-only-storage", false)); // fine buffer
+        layouts.push(device.createBindGroupLayout({
+            label: label + " fine",
+            entries: [
+                ...entries,
+                Util.create_bindGroupLayoutEntry(5, GPUShaderStage.COMPUTE, "read-only-storage", false),
+                Util.create_bindGroupLayoutEntry(6, GPUShaderStage.COMPUTE, "read-only-storage", false)
+            ],
+        }));
+
+        return layouts;
+    }
+
+    static create_bindGroupLayouts_depth(device: GPUDevice, label: string) {
+        // uniform, depth, coarse, medium, fine
+        const entries: GPUBindGroupLayoutEntry[] = [
+            Util.create_bindGroupLayoutEntry(0, GPUShaderStage.COMPUTE, "uniform", true),   // uniform
+            Util.create_bindGroupLayoutEntry(1, GPUShaderStage.COMPUTE, "storage", false),  // depth buffer
+            Util.create_bindGroupLayoutEntry(2, GPUShaderStage.COMPUTE, "read-only-storage", false),  // coarse buffer
+        ];
+        const layouts: GPUBindGroupLayout[] = [
+            device.createBindGroupLayout({
+                label: label + " coarse",
+                entries: entries,
+            })
+        ];
+
+        // entries.push(Util.create_bindGroupLayoutEntry(3, GPUShaderStage.COMPUTE, "read-only-storage", false)); // medium buffer
+        layouts.push(device.createBindGroupLayout({
+            label: label + " medium",
+            entries: [
+                ...entries,
+                Util.create_bindGroupLayoutEntry(3, GPUShaderStage.COMPUTE, "read-only-storage", false)
+            ],
+        }));
+
+        // entries.push(Util.create_bindGroupLayoutEntry(4, GPUShaderStage.COMPUTE, "read-only-storage", false)); // fine buffer
+        layouts.push(device.createBindGroupLayout({
+            label: label + " fine",
+            entries: [
+                ...entries,
+                Util.create_bindGroupLayoutEntry(3, GPUShaderStage.COMPUTE, "read-only-storage", false),
+                Util.create_bindGroupLayoutEntry(4, GPUShaderStage.COMPUTE, "read-only-storage", false)
+            ],
+        }));
+
+        return layouts;
+    }
+
+    static create_bindGroupLayoutEntry(binding: number, visibility: GPUShaderStageFlags, type: GPUBufferBindingType, hasDynamicOffset: boolean): GPUBindGroupLayoutEntry {
+        const GPUBindGroupLayoutEntry: GPUBindGroupLayoutEntry = {
+            binding: binding,
+            visibility: visibility,
+            buffer: {
+                type: type,
+                hasDynamicOffset: hasDynamicOffset,
+            }
+        }
+        return GPUBindGroupLayoutEntry;
+    }
+
+    static createBindGroupEntry(binding: number, buffer: GPUBuffer, offset?: number, size?: number): GPUBindGroupEntry {
+        return {
+            binding: binding,
+            resource: {
+                buffer: buffer,
+                offset: offset,
+                size: size,
+            }
+        };
     }
 
     /**
@@ -175,7 +303,7 @@ export class Util {
             } else if (trimmed.startsWith("/*")) {
                 // keep = trimmed.startsWith("/*" + type);
                 const c = trimmed.charAt(2);
-                if(include_lowers.includes(c)) result += lines[i] + "\n";
+                if (include_lowers.includes(c)) result += lines[i] + "\n";
             } else if (i < lines.length) result += lines[i] + "\n";
             // keep = true;
 

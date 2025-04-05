@@ -568,26 +568,53 @@ export class Batch {
         const buffers_for_depth = [
             this._uniformBuffer,
             this._depthBuffer,
+            this.getCoarseGPUBuffer()
         ]
         const buffers_for_compute = [
             this._uniformBuffer,
             this._depthBuffer,
             this._frameBuffer,
-            this.getColorGPUBuffer()
+            this.getColorGPUBuffer(),
+            this.getCoarseGPUBuffer()
         ];
 
         this.bindGroups_depth = [];
         this.bindGroups_rendering = [];
 
-        for (let i = 0; i < 3; i++) {
-            buffers_for_depth.push(this.getCoarseGPUBuffer());
-            buffers_for_compute.push(this.getCoarseGPUBuffer());
+        // Coarse
+        this.bindGroups_depth.push(Util.createBindGroup(this._device, this._compute_depth_shader_bindGroupLayouts[0], buffers_for_depth));
+        this.bindGroups_depth[0].label = 'bind group depth 0';
+        this.bindGroups_rendering.push(Util.createBindGroup(this._device, this._compute_shader_bindGroupLayouts[0], buffers_for_compute));
+        this.bindGroups_rendering[0].label = 'bind group render 0';
 
-            this.bindGroups_depth.push(Util.createBindGroup(this._device, this._compute_depth_shader_bindGroupLayouts[i], buffers_for_depth));
-            this.bindGroups_depth[i].label = 'bind group depth ' + i;
-            this.bindGroups_rendering.push(Util.createBindGroup(this._device, this._compute_shader_bindGroupLayouts[i], buffers_for_compute));
-            this.bindGroups_rendering[i].label = 'bind group render ' + i;
-        }
+        // Medium
+        buffers_for_depth.push(this.getMediumGPUBuffer());
+        buffers_for_compute.push(this.getMediumGPUBuffer());
+
+        this.bindGroups_depth.push(Util.createBindGroup(this._device, this._compute_depth_shader_bindGroupLayouts[1], buffers_for_depth));
+        this.bindGroups_depth[1].label = 'bind group depth 1';
+        this.bindGroups_rendering.push(Util.createBindGroup(this._device, this._compute_shader_bindGroupLayouts[1], buffers_for_compute));
+        this.bindGroups_rendering[1].label = 'bind group render 1';
+
+        // Fine
+        buffers_for_depth.push(this.getFineGPUBuffer());
+        buffers_for_compute.push(this.getFineGPUBuffer());
+
+        this.bindGroups_depth.push(Util.createBindGroup(this._device, this._compute_depth_shader_bindGroupLayouts[2], buffers_for_depth));
+        this.bindGroups_depth[2].label = 'bind group depth 2';
+        this.bindGroups_rendering.push(Util.createBindGroup(this._device, this._compute_shader_bindGroupLayouts[2], buffers_for_compute));
+        this.bindGroups_rendering[2].label = 'bind group render 2';
+
+        // for (let i = 0; i < 3; i++) {
+        //     buffers_for_depth.push(this.getCoarseGPUBuffer());
+        //     buffers_for_compute.push(this.getCoarseGPUBuffer());
+        //
+        //     this.bindGroups_depth.push(Util.createBindGroup(this._device, this._compute_depth_shader_bindGroupLayouts[i], buffers_for_depth));
+        //     this.bindGroups_depth[i].label = 'bind group depth ' + i;
+        //     this.bindGroups_rendering.push(Util.createBindGroup(this._device, this._compute_shader_bindGroupLayouts[i], buffers_for_compute));
+        //     this.bindGroups_rendering[i].label = 'bind group render ' + i;
+        // }
+
     }
 
     get_depth_bindGroup(type: number): GPUBindGroup | null {

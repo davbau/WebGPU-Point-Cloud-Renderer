@@ -1,14 +1,14 @@
-import { mat4, vec2, vec3 } from "webgpu-matrix";
+import {mat4, vec2, vec3} from "webgpu-matrix";
 
-import { Util } from "./utils/util";
-import { create_and_bind_quad_VertexBuffer } from "./utils/quad";
+import {Util} from "./utils/util";
+import {create_and_bind_quad_VertexBuffer} from "./utils/quad";
 import Stats from "stats.js";
-import { SIZE_OF_POINT } from "./types/c_equivalents";
-import { FileDropHandler } from "./dataHandling/FileDropHandler";
-import { GUI } from "dat.gui";
-import { BatchHandler } from "./dataHandling/BatchHandler";
-import { InputHandlerInertialTurntableCamera } from "./cameras/InputHandler-InertialTurntableCamera";
-import { InertialTurntableCamera } from "./cameras/InertialTurntableCamera";
+import {SIZE_OF_POINT} from "./types/c_equivalents";
+import {FileDropHandler} from "./dataHandling/FileDropHandler";
+import {GUI} from "dat.gui";
+import {BatchHandler} from "./dataHandling/BatchHandler";
+import {InputHandlerInertialTurntableCamera} from "./cameras/InputHandler-InertialTurntableCamera";
+import {InertialTurntableCamera} from "./cameras/InertialTurntableCamera";
 
 const canvas = document.getElementById("gfx-main") as HTMLCanvasElement;
 // // set max size of canvas
@@ -94,7 +94,7 @@ if (handler_threads_per_workgroup) {
             parseInt(handler_threads_per_workgroup),
             256
         ),
-    1);
+        1);
 }
 
 const container = document.getElementById("container") as HTMLDivElement;   // The container element
@@ -111,22 +111,27 @@ const params: {
 };
 gui.add(params, 'renderQuality', ['auto', 'coarse', "medium", "fine"]);
 gui.add(params, 'show_debug_div').onChange((value) => setDebugDivVisibility(value));
-gui.add({ view_to_model: resetViewport }, 'view_to_model');
+gui.add({view_to_model: resetViewport}, 'view_to_model');
 
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
 
 // Region pipeline
+const compute_bindGroupLayouts = Util.create_bindGroupLayouts_compute(device, "compute");
+const compute_depth_bindGroupLayouts = Util.create_bindGroupLayouts_depth(device, "compute depth");
+
 import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
-const compute_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_shader, THREADS_PER_WORKGROUP, "compute");
+
+const compute_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_shader, THREADS_PER_WORKGROUP, "compute", compute_bindGroupLayouts);
 
 
 import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
-const compute_depth_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_depth_shader, THREADS_PER_WORKGROUP, "compute depth");
+
+const compute_depth_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_depth_shader, THREADS_PER_WORKGROUP, "compute depth", compute_depth_bindGroupLayouts);
 
 
 import display_shader from "./shaders/display_on_screan.wgsl";
-import { log } from "console";
+import {log} from "console";
 
 const display_shaderModule = device.createShaderModule({
     label: "display shader module",
@@ -134,7 +139,7 @@ const display_shaderModule = device.createShaderModule({
 });
 const displayPipelineDescriptor = Util.createPipelineDescriptor_pos4_uv2(device, display_shaderModule, "vs_main", "fs_main", format);
 displayPipelineDescriptor.label = "display pipeline descriptor";
-displayPipelineDescriptor.primitive = { topology: 'triangle-strip' };
+displayPipelineDescriptor.primitive = {topology: 'triangle-strip'};
 const displayPipeline = device.createRenderPipeline(displayPipelineDescriptor);
 
 // Region Framebuffer
@@ -190,6 +195,7 @@ const stagingBuffer = device.createBuffer({
 
 
 // Region Uniform
+const dynamicUniformAlignment = device.limits.minUniformBufferOffsetAlignment;
 const uniformBuffer = device.createBuffer({
     label: "uniform buffer",
     size: 4 * Float32Array.BYTES_PER_ELEMENT    // canvas width, height, 2x padding
@@ -200,19 +206,50 @@ const uniformBuffer = device.createBuffer({
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
 });
 
+export const uniformBufferSizeWithAlignment = Math.ceil(uniformBuffer.size / dynamicUniformAlignment) * dynamicUniformAlignment;
+let dynamicUniformBuffer = device.createBuffer({
+    label: "dynamic uniform buffer",
+    size: uniformBufferSizeWithAlignment * 20,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+})
+
+function updateDynamicUniformBuffer(batchHandler: BatchHandler, mvp: Float32Array) {
+    // TODO: check if we need to rebuild the dynamic uniform buffer (more data loaded between frames)
+
+    // const batchRenderModes = batchHandler.getRenderModesOfBatches(mvp);
+    const dynamicUniformData = new Float32Array(dynamicUniformBuffer.size / Float32Array.BYTES_PER_ELEMENT);
+    let offset = 0;
+    for (let i = 0; i < batchHandler.numberOfBuffers(); i++) {
+        const batch = batchHandler.getBatch(i);
+        const currentBatch = new Float32Array([
+            screen_size[0], screen_size[1], 0, 0, // padding
+            ...mvp,
+            ...batch.getOrigin(), 0,
+            ...batch.getBoxSize(), 0,
+            // batchRenderModes[i], 0, 0, 0, // I don't use rendermode in shaders anymore but might switch back because the pipelines are much more confusing now and I haven't seen any performance difference
+            0, 0, 0, 0
+        ]);
+
+        dynamicUniformData.set(currentBatch, offset);
+        offset += uniformBufferSizeWithAlignment;
+    }
+
+    device.queue.writeBuffer(dynamicUniformBuffer, 0, dynamicUniformData.buffer, dynamicUniformData.byteOffset, dynamicUniformData.byteLength);
+}
+
 
 // Region BindGroup
-const compute_depth_shader_bindGroupLayouts = compute_depth_pipelines.map(pipeline => pipeline.getBindGroupLayout(0));
-compute_depth_shader_bindGroupLayouts.forEach((layout, index) => {
-    layout.label = "compute depth pipeline layout" +
-        (index === 0 ? " coarse" : index === 1 ? " medium" : " fine")
-});
-
-const compute_shader_bindGroupLayouts = compute_pipelines.map(pipeline => pipeline.getBindGroupLayout(0));
-compute_shader_bindGroupLayouts.forEach((layout, index) => {
-    layout.label = "compute pipeline layout" +
-        (index === 0 ? " coarse" : index === 1 ? " medium" : " fine")
-});
+// const compute_depth_shader_bindGroupLayouts = compute_depth_pipelines.map(pipeline => pipeline.getBindGroupLayout(0));
+// compute_depth_shader_bindGroupLayouts.forEach((layout, index) => {
+//     layout.label = "compute depth pipeline layout" +
+//         (index === 0 ? " coarse" : index === 1 ? " medium" : " fine")
+// });
+//
+// const compute_shader_bindGroupLayouts = compute_pipelines.map(pipeline => pipeline.getBindGroupLayout(0));
+// compute_shader_bindGroupLayouts.forEach((layout, index) => {
+//     layout.label = "compute pipeline layout" +
+//         (index === 0 ? " coarse" : index === 1 ? " medium" : " fine")
+// });
 
 const display_pipelineLayout = displayPipeline.getBindGroupLayout(0);
 display_pipelineLayout.label = "display pipeline layout";
@@ -286,11 +323,11 @@ const mVP = mat4.create();
 const fileDropHandler = new FileDropHandler(
     container,
     device,
-    uniformBuffer,
+    dynamicUniformBuffer,
     depthBuffer,
     framebuffer,
-    compute_depth_shader_bindGroupLayouts,
-    compute_shader_bindGroupLayouts,
+    compute_depth_bindGroupLayouts,
+    compute_bindGroupLayouts,
     screen_size,
     BUFFER_HANDLER_SIZE);
 let batchHandler = fileDropHandler.getBatchHandler();
@@ -377,6 +414,20 @@ async function generateFrame() {
     const batches_shown: number[] = [];
     const batches_renderType: number[] = [];
 
+    // update dynamic uniform buffer
+    updateDynamicUniformBuffer(batchHandler, mVP);
+    // update uniform buffer for display pass
+    // building the uniform buffer data
+    const uniform_data = new Float32Array([
+        screen_size[0], screen_size[1], 0, 0, // padding
+        ...mVP,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+    ]);
+    device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
+
+
     // Workgroup initial values for later
     let xWorkGroups = 1;
     let yWorkGroups = 1;
@@ -384,7 +435,7 @@ async function generateFrame() {
 
     // go through all the batches and render visible ones
     for (const batch of batchHandler.getBatches()) {
-        if (!batch.isWrittenToGPU()) {
+        if (!batch.isWrittenToGPU() || batch.getID() != 0) {
             continue;
         }
         if (!batch.isOnScreen(mVP)) {
@@ -416,15 +467,15 @@ async function generateFrame() {
         const compute_depth_pipeline = compute_depth_pipelines[accuracy_level];
 
         // Region Uniform
-        // building the uniform buffer data
-        const uniform_data = new Float32Array([
-            screen_size[0], screen_size[1], 0, 0, // padding
-            ...mVP,
-            ...batch.getOrigin(), 0,
-            ...batch.getBoxSize(), 0,
-            accuracy_level, 0, 0, 0,
-        ]);
-        device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
+        // // building the uniform buffer data
+        // const uniform_data = new Float32Array([
+        //     screen_size[0], screen_size[1], 0, 0, // padding
+        //     ...mVP,
+        //     ...batch.getOrigin(), 0,
+        //     ...batch.getBoxSize(), 0,
+        //     accuracy_level, 0, 0, 0,
+        // ]);
+        // device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
 
         let nr_pointsInCurrentBuffer = batch.filledSize();
 
@@ -443,7 +494,7 @@ async function generateFrame() {
         // Region Compute Depth Pass
         const compute_depth_pass = commandEncoder.beginComputePass();
         compute_depth_pass.setPipeline(compute_depth_pipeline);
-        compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup);
+        compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup, [batch.getID() * uniformBufferSizeWithAlignment]);
         compute_depth_pass.dispatchWorkgroups(
             Math.max(1, xWorkGroups),
             Math.max(1, yWorkGroups),
@@ -463,15 +514,15 @@ async function generateFrame() {
 
     // go through all the batches and render visible ones
     for (const batch of batchHandler.getBatches()) {
-        if (!batch.isWrittenToGPU()) {
+        if (!batch.isWrittenToGPU() || batch.getID() != 0) {
             continue;
         }
         if (!batch.isOnScreen(mVP)) {
             // console.log(`batch ${batch.getID()} not on screen`);
-            batches_renderType.push(-1);
+            // batches_renderType.push(-1);
             continue;
         } else {
-            batches_shown.push(batch.getID());
+            // batches_shown.push(batch.getID());
         }
 
         // Region accuracy Level
@@ -490,20 +541,20 @@ async function generateFrame() {
                 accuracy_level = 2;
                 break;
         }
-        batches_renderType.push(accuracy_level);
+        // batches_renderType.push(accuracy_level);
 
         const computePipeline = compute_pipelines[accuracy_level];
 
         // Region Uniform
         // building the uniform buffer data
-        const uniform_data = new Float32Array([
-            screen_size[0], screen_size[1], 0, 0, // padding
-            ...mVP,
-            ...batch.getOrigin(), 0,
-            ...batch.getBoxSize(), 0,
-            accuracy_level, 0, 0, 0,
-        ]);
-        device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
+        // const uniform_data = new Float32Array([
+        //     screen_size[0], screen_size[1], 0, 0, // padding
+        //     ...mVP,
+        //     ...batch.getOrigin(), 0,
+        //     ...batch.getBoxSize(), 0,
+        //     accuracy_level, 0, 0, 0,
+        // ]);
+        // device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
 
         let nr_pointsInCurrentBuffer = batch.filledSize();
 
@@ -523,7 +574,7 @@ async function generateFrame() {
         // Region Compute Pass
         const computePass = commandEncoder.beginComputePass();
         computePass.setPipeline(computePipeline);
-        computePass.setBindGroup(0, compute_shader_bindGroup);
+        computePass.setBindGroup(0, compute_shader_bindGroup, [batch.getID() * uniformBufferSizeWithAlignment]);
         computePass.dispatchWorkgroups(
             Math.max(1, xWorkGroups),
             Math.max(1, yWorkGroups),
@@ -533,7 +584,7 @@ async function generateFrame() {
         device.queue.submit([commandEncoder.finish()]);
         commandEncoder = device.createCommandEncoder();
 
-        numberOfPoints += nr_pointsInCurrentBuffer;
+        // numberOfPoints += nr_pointsInCurrentBuffer;
     }
 
     if (debug_div.checkVisibility()) {

@@ -1,4 +1,4 @@
-import {vec2} from "webgpu-matrix";
+import {vec2, vec4} from "webgpu-matrix";
 import {Batch} from "./Batch";
 
 export class BatchHandler {
@@ -113,7 +113,7 @@ export class BatchHandler {
             const wait = currentBatch.loadData(dataToWrite);
 
             remainingData = remainingData.slice(remainingSpace);
-           if (remainingData.byteLength > 0) {
+            if (remainingData.byteLength > 0) {
                 this.addBatch();
             }
             await wait;
@@ -161,5 +161,19 @@ export class BatchHandler {
         });
 
         return [min[0], min[1], min[2], max[0], max[1], max[2]];
+    }
+
+    getRenderModesOfBatches(mvp: Float32Array): number[] {
+        const renderModes: number[] = [];
+        this._batches.forEach(batch => {
+            if (!batch.isWrittenToGPU()) {
+                renderModes.push(-1);
+            } else if (batch.isOnScreen(mvp)) {
+                renderModes.push(batch.getAccuracyLevel(mvp));
+            } else {
+                renderModes.push(-1);
+            }
+        });
+        return renderModes;
     }
 }
