@@ -209,7 +209,7 @@ const uniformBuffer = device.createBuffer({
 export const uniformBufferSizeWithAlignment = Math.ceil(uniformBuffer.size / dynamicUniformAlignment) * dynamicUniformAlignment;
 let dynamicUniformBuffer = device.createBuffer({
     label: "dynamic uniform buffer",
-    size: uniformBufferSizeWithAlignment * 100,
+    size: uniformBufferSizeWithAlignment * 30,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
 });
 
@@ -261,7 +261,7 @@ const display_shader_bindGroup = device.createBindGroup({
         {
             binding: 0,
             resource: {
-                buffer: uniformBuffer,
+                buffer: dynamicUniformBuffer,
             }
         },
         {
@@ -419,14 +419,14 @@ async function generateFrame() {
     updateDynamicUniformBuffer(batchHandler, mVP);
     // update uniform buffer for display pass
     // building the uniform buffer data
-    const uniform_data = new Float32Array([
-        screen_size[0], screen_size[1], 0, 0, // padding
-        ...mVP,
-        0, 0, 0, 0,
-        0, 0, 0, 0,
-        0, 0, 0, 0,
-    ]);
-    device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
+    // const uniform_data = new Float32Array([
+    //     screen_size[0], screen_size[1], 0, 0, // padding
+    //     ...mVP,
+    //     0, 0, 0, 0,
+    //     0, 0, 0, 0,
+    //     0, 0, 0, 0,
+    // ]);
+    // device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
 
 
     // Workgroup initial values for later
