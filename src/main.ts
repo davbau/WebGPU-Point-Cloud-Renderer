@@ -387,7 +387,7 @@ async function generateFrame() {
         if (!batch.isWrittenToGPU()) {
             continue;
         }
-        if (!batch.isOnScreen(mVP)) {
+        if (!batch.isInFrustum(mVP)) {
             // console.log(`batch ${batch.getID()} not on screen`);
             batches_renderType.push(-1);
             continue;
@@ -422,7 +422,7 @@ async function generateFrame() {
             ...mVP,
             ...batch.getOrigin(), 0,
             ...batch.getBoxSize(), 0,
-            accuracy_level, 0, 0, 0,
+            accuracy_level, THREADS_PER_WORKGROUP, 0, 0,
         ]);
         device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
 
@@ -433,9 +433,13 @@ async function generateFrame() {
 
         if (totalWorkGroups <= device.limits.maxComputeWorkgroupsPerDimension) {
             xWorkGroups = totalWorkGroups;
-        } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 2)) {
-            yWorkGroups = Math.ceil(totalWorkGroups / device.limits.maxComputeWorkgroupsPerDimension);
-            xWorkGroups = Math.ceil(totalWorkGroups / yWorkGroups);
+        // } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 2)) {
+        //     yWorkGroups = Math.ceil(totalWorkGroups / device.limits.maxComputeWorkgroupsPerDimension);
+        //     xWorkGroups = Math.ceil(totalWorkGroups / yWorkGroups);
+        } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 3)) {
+            zWorkGroups = Math.ceil(totalWorkGroups / (device.limits.maxComputeWorkgroupsPerDimension * device.limits.maxComputeWorkgroupsPerDimension));
+            yWorkGroups = Math.ceil(totalWorkGroups / (device.limits.maxComputeWorkgroupsPerDimension * zWorkGroups));
+            xWorkGroups = Math.ceil(totalWorkGroups / (yWorkGroups * zWorkGroups));
         }
 
         const compute_depth_shader_bindGroup = batch.get_depth_bindGroup(accuracy_level);
@@ -453,7 +457,7 @@ async function generateFrame() {
         device.queue.submit([commandEncoder.finish()]);
         commandEncoder = device.createCommandEncoder();
 
-        numberOfPoints += nr_pointsInCurrentBuffer;
+        // numberOfPoints += nr_pointsInCurrentBuffer;
     }
 
     // Workgroup initial values for later
@@ -466,13 +470,8 @@ async function generateFrame() {
         if (!batch.isWrittenToGPU()) {
             continue;
         }
-        if (!batch.isOnScreen(mVP)) {
-            // console.log(`batch ${batch.getID()} not on screen`);
-            batches_renderType.push(-1);
+        if (!batch.isInFrustum(mVP))
             continue;
-        } else {
-            batches_shown.push(batch.getID());
-        }
 
         // Region accuracy Level
         let accuracy_level = 2;
@@ -490,7 +489,7 @@ async function generateFrame() {
                 accuracy_level = 2;
                 break;
         }
-        batches_renderType.push(accuracy_level);
+        // batches_renderType.push(accuracy_level);
 
         const computePipeline = compute_pipelines[accuracy_level];
 
@@ -501,7 +500,7 @@ async function generateFrame() {
             ...mVP,
             ...batch.getOrigin(), 0,
             ...batch.getBoxSize(), 0,
-            accuracy_level, 0, 0, 0,
+            accuracy_level, THREADS_PER_WORKGROUP, 0, 0,
         ]);
         device.queue.writeBuffer(uniformBuffer, 0, uniform_data.buffer, uniform_data.byteOffset, uniform_data.byteLength);
 
@@ -512,9 +511,13 @@ async function generateFrame() {
 
         if (totalWorkGroups <= device.limits.maxComputeWorkgroupsPerDimension) {
             xWorkGroups = totalWorkGroups;
-        } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 2)) {
-            yWorkGroups = Math.ceil(totalWorkGroups / device.limits.maxComputeWorkgroupsPerDimension);
-            xWorkGroups = Math.ceil(totalWorkGroups / yWorkGroups);
+        // } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 2)) {
+        //     yWorkGroups = Math.ceil(totalWorkGroups / device.limits.maxComputeWorkgroupsPerDimension);
+        //     xWorkGroups = Math.ceil(totalWorkGroups / yWorkGroups);
+        } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 3)) {
+            zWorkGroups = Math.ceil(totalWorkGroups / (device.limits.maxComputeWorkgroupsPerDimension * device.limits.maxComputeWorkgroupsPerDimension));
+            yWorkGroups = Math.ceil(totalWorkGroups / (device.limits.maxComputeWorkgroupsPerDimension * zWorkGroups));
+            xWorkGroups = Math.ceil(totalWorkGroups / (yWorkGroups * zWorkGroups));
         }
 
         const compute_shader_bindGroup = batch.get_compute_bindGroup(accuracy_level);
@@ -536,11 +539,19 @@ async function generateFrame() {
         numberOfPoints += nr_pointsInCurrentBuffer;
     }
 
+    const batches_not_shown = [];
+    for (let i = 0; i < batchHandler.numberOfBuffers(); i++) {
+        if (!(i in batches_shown)) {
+            batches_not_shown.push(i);
+        }
+    }
+
     if (debug_div.checkVisibility()) {
         debug_div.innerText = `Number of points: ${Util.segmentNumber(numberOfPoints)},
         Number of points per batch: ${Util.segmentNumber(batchHandler.getBatch(0).getBatchSize())},
         Number of batches: ${batchHandler.numberOfBuffers()},
         Batches shown: ${batches_shown.join("\t")},
+        Batches not shown: ${batches_not_shown.join("\t")},
         Batches render type: ${batches_renderType.join("\t")},
         TpW: ${THREADS_PER_WORKGROUP},
         Workgroups: ${xWorkGroups} x ${yWorkGroups} x ${zWorkGroups},

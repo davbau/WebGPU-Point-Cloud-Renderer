@@ -458,20 +458,90 @@ export class Batch {
         return transformedCorners;
     }
 
+    private NDC_BoundingBox_cached: Float32Array | null = null;
+
     /**
-     * Check if the batch is on screen. The batch is on screen if at least one of the eight corners of the bounding box is on screen.
+     * Gets the bounding box of the batch in NDC space. The bounding box is an array of 8 numbers: [x1, y1, z1, x2, y2, z2, ...]
+     *
+     * <b>NOTE:</b> Because this function gets called before {@link getBoundingBoxOnScreen}, the last used MVP matrix should not be updated here.
+     *
+     * @param mvp
+     */
+    getBoundingBoxInNDC(mvp: Float32Array): Float32Array {
+        if (mat4.equalsApproximately(mvp, this.lastUsedMVP)) {
+            if (this.NDC_BoundingBox_cached)
+                return this.NDC_BoundingBox_cached;
+        }
+        const corners = [
+            [this._boundingBox[0], this._boundingBox[1], this._boundingBox[2]],
+            [this._boundingBox[3], this._boundingBox[1], this._boundingBox[2]],
+            [this._boundingBox[0], this._boundingBox[4], this._boundingBox[2]],
+            [this._boundingBox[3], this._boundingBox[4], this._boundingBox[2]],
+            [this._boundingBox[0], this._boundingBox[1], this._boundingBox[5]],
+            [this._boundingBox[3], this._boundingBox[1], this._boundingBox[5]],
+            [this._boundingBox[0], this._boundingBox[4], this._boundingBox[5]],
+            [this._boundingBox[3], this._boundingBox[4], this._boundingBox[5]],
+        ];
+
+        const transformedCorners = new Float32Array(24);
+        for (let i = 0; i < 8; i++) {
+            const corner = vec4.fromValues(corners[i][0], corners[i][1], corners[i][2], 1.0);
+            const transformedCorner = vec4.create();
+            vec4.transformMat4(corner, mvp, transformedCorner);
+
+            const ndc = vec4.create();
+            vec4.scale(transformedCorner, 1 / transformedCorner[3], ndc);
+
+            transformedCorners[i * 3] = ndc[0];
+            transformedCorners[i * 3 + 1] = ndc[1];
+            transformedCorners[i * 3 + 2] = ndc[2];
+        }
+
+        // update the cached value
+        // mat4.copy(transformedCorners, this.NDC_BoundingBox_cached); // Do not updated here!
+        this.NDC_BoundingBox_cached = transformedCorners;
+        return transformedCorners;
+    }
+
+
+    /**
+     * Check if the batch is in the view frustum. This is checked in NDC space.
+     *
      * @param mvp The model view projection matrix.
      * @returns True if the batch is on screen, false otherwise.
      */
-    isOnScreen(mvp: Float32Array): boolean {
-        const corners = this.getBoundingBoxOnScreen(mvp);
+    isInFrustum(mvp: Float32Array): boolean {
+        const ndcCorners = this.getBoundingBoxInNDC(mvp);
+        let ndcMin = [Infinity, Infinity, Infinity];
+        let ndcMax = [-Infinity, -Infinity, -Infinity];
+        let hasValidCoords = false;
+
         for (let i = 0; i < 8; i++) {
-            if (corners[i * 3] >= 0 && corners[i * 3] <= this._screenSize[0] &&
-                corners[i * 3 + 1] >= 0 && corners[i * 3 + 1] <= this._screenSize[1]) {
-                return true;
-            }
+            const x = ndcCorners[i * 3];
+            const y = ndcCorners[i * 3 + 1];
+            const z = ndcCorners[i * 3 + 2];
+
+            // Skip invalid corners (behind camera, w <= 0 → marked as -Infinity earlier)
+            if (!isFinite(x) || !isFinite(y) || !isFinite(z))
+                continue;
+
+            ndcMin[0] = Math.min(ndcMin[0], x);
+            ndcMin[1] = Math.min(ndcMin[1], y);
+            ndcMin[2] = Math.min(ndcMin[2], z);
+
+            ndcMax[0] = Math.max(ndcMax[0], x);
+            ndcMax[1] = Math.max(ndcMax[1], y);
+            ndcMax[2] = Math.max(ndcMax[2], z);
+
+            hasValidCoords = true;
         }
-        return false;
+
+        if (!hasValidCoords) return false;
+
+        // Check intersection with the NDC cube [-1, 1] on all axes
+        return ndcMin[0] <= 1 && ndcMax[0] >= -1 &&
+            ndcMin[1] <= 1 && ndcMax[1] >= -1
+            // && ndcMin[2] <= 1 && ndcMax[2] >= -1; // This seems to cause issues. I'll leave depth testing fully up to the GPU for now.
     }
 
     /**
@@ -568,26 +638,42 @@ export class Batch {
         const buffers_for_depth = [
             this._uniformBuffer,
             this._depthBuffer,
+            this.getCoarseGPUBuffer()
         ]
         const buffers_for_compute = [
             this._uniformBuffer,
             this._depthBuffer,
             this._frameBuffer,
-            this.getColorGPUBuffer()
+            this.getColorGPUBuffer(),
+            this.getCoarseGPUBuffer()
         ];
 
         this.bindGroups_depth = [];
         this.bindGroups_rendering = [];
 
-        for (let i = 0; i < 3; i++) {
-            buffers_for_depth.push(this.getCoarseGPUBuffer());
-            buffers_for_compute.push(this.getCoarseGPUBuffer());
+        // coarse
+        this.bindGroups_depth.push(Util.createBindGroup(this._device, this._compute_depth_shader_bindGroupLayouts[0], buffers_for_depth));
+        this.bindGroups_depth[0].label = 'bind group depth 0';
+        this.bindGroups_rendering.push(Util.createBindGroup(this._device, this._compute_shader_bindGroupLayouts[0], buffers_for_compute));
+        this.bindGroups_rendering[0].label = 'bind group render 0';
 
-            this.bindGroups_depth.push(Util.createBindGroup(this._device, this._compute_depth_shader_bindGroupLayouts[i], buffers_for_depth));
-            this.bindGroups_depth[i].label = 'bind group depth ' + i;
-            this.bindGroups_rendering.push(Util.createBindGroup(this._device, this._compute_shader_bindGroupLayouts[i], buffers_for_compute));
-            this.bindGroups_rendering[i].label = 'bind group render ' + i;
-        }
+        // medium
+        buffers_for_compute.push(this.getMediumGPUBuffer());
+        buffers_for_depth.push(this.getMediumGPUBuffer());
+
+        this.bindGroups_depth.push(Util.createBindGroup(this._device, this._compute_depth_shader_bindGroupLayouts[1], buffers_for_depth));
+        this.bindGroups_depth[1].label = 'bind group depth 1';
+        this.bindGroups_rendering.push(Util.createBindGroup(this._device, this._compute_shader_bindGroupLayouts[1], buffers_for_compute));
+        this.bindGroups_rendering[1].label = 'bind group render 1';
+
+        // fine
+        buffers_for_compute.push(this.getFineGPUBuffer());
+        buffers_for_depth.push(this.getFineGPUBuffer());
+
+        this.bindGroups_depth.push(Util.createBindGroup(this._device, this._compute_depth_shader_bindGroupLayouts[2], buffers_for_depth));
+        this.bindGroups_depth[2].label = 'bind group depth 2';
+        this.bindGroups_rendering.push(Util.createBindGroup(this._device, this._compute_shader_bindGroupLayouts[2], buffers_for_compute));
+        this.bindGroups_rendering[2].label = 'bind group render 2';
     }
 
     get_depth_bindGroup(type: number): GPUBindGroup | null {

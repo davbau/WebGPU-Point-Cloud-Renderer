@@ -3,7 +3,7 @@ struct Uniforms {
     mvp: mat4x4<f32>,
     origin: vec4<f32>,
     size: vec4<f32>,
-    renderMode: u32,
+    renderingInfo: vec4<f32>,
 };
 
 
@@ -31,7 +31,10 @@ fn main(
     @builtin(workgroup_id) wid: vec3<u32>,
     @builtin(num_workgroups) num_wg: vec3<u32>
 ) {
-    let pointIndex = gid.x;
+    let renderMode = uniforms.renderingInfo.x;
+    let tpw = u32(uniforms.renderingInfo.y);
+
+    let pointIndex = gid.y * num_wg.x * tpw + gid.x;
     var p = vec3<u32>(0, 0, 0);
 //    /*C*/p = coarse(pointIndex);
 //    /*M*/p = medium(pointIndex);

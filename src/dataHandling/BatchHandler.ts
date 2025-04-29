@@ -69,13 +69,13 @@ export class BatchHandler {
 
     /**
      * For each batch in the batch handler that is on screen, call the callback function with the batch as the argument.
-     * If the batch is on screen is determined by calling the {@link Batch.isOnScreen} method.
+     * If the batch is on screen is determined by calling the {@link Batch.isInFrustum} method.
      * @param mvp
      * @param callback
      */
     forEachBatchOnScreen(mvp: Float32Array, callback: (batch: Batch) => void) {
         this._batches.forEach(batch => {
-            if (batch.isOnScreen(mvp)) {
+            if (batch.isInFrustum(mvp)) {
                 callback(batch);
             }
         });
