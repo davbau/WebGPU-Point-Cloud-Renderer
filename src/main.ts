@@ -209,7 +209,7 @@ const uniformBuffer = device.createBuffer({
 export const uniformBufferSizeWithAlignment = Math.ceil(uniformBuffer.size / dynamicUniformAlignment) * dynamicUniformAlignment;
 let dynamicUniformBuffer = device.createBuffer({
     label: "dynamic uniform buffer",
-    size: uniformBufferSizeWithAlignment * 30,
+    size: uniformBufferSizeWithAlignment * 50,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
 });
 
@@ -504,9 +504,6 @@ async function generateFrame() {
             Math.max(1, zWorkGroups));
         compute_depth_pass.end();
 
-        device.queue.submit([commandEncoder.finish()]);
-        commandEncoder = device.createCommandEncoder();
-
         numberOfPoints += nr_pointsInCurrentBuffer;
     }
 
@@ -586,11 +583,10 @@ async function generateFrame() {
             Math.max(1, zWorkGroups));
         computePass.end();
 
-        device.queue.submit([commandEncoder.finish()]);
-        commandEncoder = device.createCommandEncoder();
-
         // numberOfPoints += nr_pointsInCurrentBuffer;
     }
+    device.queue.submit([commandEncoder.finish()]);
+    commandEncoder = device.createCommandEncoder();
 
     if (debug_div.checkVisibility()) {
         debug_div.innerText = `Number of points: ${Util.segmentNumber(numberOfPoints)},
