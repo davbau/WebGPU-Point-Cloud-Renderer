@@ -1,14 +1,14 @@
-import { mat4, vec2, vec3 } from "webgpu-matrix";
+import {mat4, vec2, vec3} from "webgpu-matrix";
 
-import { Util } from "./utils/util";
-import { create_and_bind_quad_VertexBuffer } from "./utils/quad";
-import Stats from "stats.js";
-import { SIZE_OF_POINT } from "./types/c_equivalents";
-import { FileDropHandler } from "./dataHandling/FileDropHandler";
-import { GUI } from "dat.gui";
-import { BatchHandler } from "./dataHandling/BatchHandler";
-import { InputHandlerInertialTurntableCamera } from "./cameras/InputHandler-InertialTurntableCamera";
-import { InertialTurntableCamera } from "./cameras/InertialTurntableCamera";
+import {Util} from "./utils/util";
+import {create_and_bind_quad_VertexBuffer} from "./utils/quad";
+import Stats, {Panel} from "stats.js";
+import {SIZE_OF_POINT} from "./types/c_equivalents";
+import {FileDropHandler} from "./dataHandling/FileDropHandler";
+import {GUI} from "dat.gui";
+import {BatchHandler} from "./dataHandling/BatchHandler";
+import {InputHandlerInertialTurntableCamera} from "./cameras/InputHandler-InertialTurntableCamera";
+import {InertialTurntableCamera} from "./cameras/InertialTurntableCamera";
 
 const canvas = document.getElementById("gfx-main") as HTMLCanvasElement;
 // // set max size of canvas
@@ -94,7 +94,7 @@ if (handler_threads_per_workgroup) {
             parseInt(handler_threads_per_workgroup),
             256
         ),
-    1);
+        1);
 }
 
 const container = document.getElementById("container") as HTMLDivElement;   // The container element
@@ -111,22 +111,28 @@ const params: {
 };
 gui.add(params, 'renderQuality', ['auto', 'coarse', "medium", "fine"]);
 gui.add(params, 'show_debug_div').onChange((value) => setDebugDivVisibility(value));
-gui.add({ view_to_model: resetViewport }, 'view_to_model');
+gui.add({view_to_model: resetViewport}, 'view_to_model').name("View to Model");
+// This is done later down the line, I included it here to show that the functionality exists.
+// gui.add({run_benchmark: start_measurement()}, 'run_benchmark').name("Run Benchmark");
 
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
 
 // Region pipeline
 import compute_shader from "./shaders/compute_multipleBuffers.wgsl";
+
 const compute_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_shader, THREADS_PER_WORKGROUP, "compute");
 
 
 import compute_depth_shader from "./shaders/compute_depth_shader_multipleBuffers.wgsl";
+
 const compute_depth_pipelines = Util.create_compute_Pipelines_with_settings(device, compute_depth_shader, THREADS_PER_WORKGROUP, "compute depth");
 
 
 import display_shader from "./shaders/display_on_screan.wgsl";
-import { log } from "console";
+import {log} from "console";
+import TimingHelper from "./utils/TimingHelper";
+import {SmallLASLoader} from "./dataHandling/SmallLASLoader";
 
 const display_shaderModule = device.createShaderModule({
     label: "display shader module",
@@ -134,7 +140,7 @@ const display_shaderModule = device.createShaderModule({
 });
 const displayPipelineDescriptor = Util.createPipelineDescriptor_pos4_uv2(device, display_shaderModule, "vs_main", "fs_main", format);
 displayPipelineDescriptor.label = "display pipeline descriptor";
-displayPipelineDescriptor.primitive = { topology: 'triangle-strip' };
+displayPipelineDescriptor.primitive = {topology: 'triangle-strip'};
 const displayPipeline = device.createRenderPipeline(displayPipelineDescriptor);
 
 // Region Framebuffer
@@ -297,8 +303,11 @@ let batchHandler = fileDropHandler.getBatchHandler();
 
 // Region setup stats
 const stats = new Stats();
-stats.showPanel(0);
 document.body.appendChild(stats.dom);
+
+const gpuTimePanel = stats.addPanel(new Panel('ms GPU', '#ff8', '#221'));
+stats.showPanel(0);
+
 
 /**
  * Reset the viewport so that the model is in the center of the view.
@@ -349,6 +358,86 @@ function resetViewport() {
     console.log("camera: ", camera.getParams());
 }
 
+// Setup Timing
+const timingHelper = new TimingHelper(device);
+let is_timing = false;
+// Duration of test in ms
+const time_for = 5 * 1000;
+// Duration the test has been run in ms
+let timed_for = 0;
+
+const gpu_times: number[] = [];
+let gpu_time_this_frame = 0;
+
+const total_frame_times: number[] = [];
+
+gui.add({run_benchmark: start_measurement}, 'run_benchmark').name("Run Benchmark");
+
+
+/**
+ * Starts the measurement of the GPU time.
+ * This function is called when the user presses the "start measurement" button.
+ */
+async function start_measurement() {
+    if (is_timing) {
+        console.log("Already measuring");
+        return;
+    }
+    console.log("Starting measurement for " + time_for + "ms");
+
+    is_timing = true;
+    setTimeout(stop_measurement, time_for);
+}
+
+/**
+ * Retrieves measured information and calculates averages.
+ */
+function stop_measurement() {
+    let avg_gpu_times: number = 0;
+    gpu_times.forEach(gpu => {
+        avg_gpu_times += gpu
+    });
+    avg_gpu_times /= gpu_times.length;
+
+    let avg_frame_times: number = 0;
+    total_frame_times.forEach(frame => {
+        avg_frame_times += frame
+    });
+    avg_frame_times /= total_frame_times.length;
+
+    const avg_fps = (total_frame_times.length / timed_for) * 1000;
+
+    console.log(`
+    Average GPU time: ${avg_gpu_times} ms
+    Average Frame time: ${avg_frame_times} ms
+    Average FPS: ${avg_fps}
+    `)
+    is_timing = false;
+
+    download_benchmark_result(`bSize-${BUFFER_HANDLER_SIZE}_TpW-${THREADS_PER_WORKGROUP}_model-${fileDropHandler.getFileNames()[0]}`, gpu_times, total_frame_times);
+}
+
+/**
+ * Downloads the benchmark results as a csv file.
+ * @param name The name of the benchmark
+ * @param gpus an array of GPU times in ms
+ * @param totals an array of total frame times in ms
+ */
+function download_benchmark_result(name: string, gpus: number[], totals: number[]) {
+    // const data = `GPU Times: ${gpus.join(", ")}\nTotal Frame Times: ${totals.join(", ")}`;
+    const data = `GPU Times (ms),Total Frame Times (ms)\n` +
+        gpus.map((gpu, index) => `${gpu},${totals[index]}`).join("\n");
+    const blob = new Blob([data], {type: "text/plain"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+
 const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(0xFFFFFFFF);
 // device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
 // unmap depth buffer
@@ -360,6 +449,7 @@ let numberOfPoints = 0;
  * The main function that generates the frame. This function is called recursively using requestAnimationFrame.
  */
 async function generateFrame() {
+    const start_time = performance.now();
     // update stats
     stats.begin();
     // update camera
@@ -433,9 +523,9 @@ async function generateFrame() {
 
         if (totalWorkGroups <= device.limits.maxComputeWorkgroupsPerDimension) {
             xWorkGroups = totalWorkGroups;
-        // } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 2)) {
-        //     yWorkGroups = Math.ceil(totalWorkGroups / device.limits.maxComputeWorkgroupsPerDimension);
-        //     xWorkGroups = Math.ceil(totalWorkGroups / yWorkGroups);
+            // } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 2)) {
+            //     yWorkGroups = Math.ceil(totalWorkGroups / device.limits.maxComputeWorkgroupsPerDimension);
+            //     xWorkGroups = Math.ceil(totalWorkGroups / yWorkGroups);
         } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 3)) {
             zWorkGroups = Math.ceil(totalWorkGroups / (device.limits.maxComputeWorkgroupsPerDimension * device.limits.maxComputeWorkgroupsPerDimension));
             yWorkGroups = Math.ceil(totalWorkGroups / (device.limits.maxComputeWorkgroupsPerDimension * zWorkGroups));
@@ -445,7 +535,8 @@ async function generateFrame() {
         const compute_depth_shader_bindGroup = batch.get_depth_bindGroup(accuracy_level);
 
         // Region Compute Depth Pass
-        const compute_depth_pass = commandEncoder.beginComputePass();
+        // const compute_depth_pass = commandEncoder.beginComputePass();
+        const compute_depth_pass = timingHelper.beginComputePass(commandEncoder);
         compute_depth_pass.setPipeline(compute_depth_pipeline);
         compute_depth_pass.setBindGroup(0, compute_depth_shader_bindGroup);
         compute_depth_pass.dispatchWorkgroups(
@@ -456,6 +547,19 @@ async function generateFrame() {
 
         device.queue.submit([commandEncoder.finish()]);
         commandEncoder = device.createCommandEncoder();
+
+        /*
+        if (is_timing) {
+            timingHelper.getResult().then(gpuTime => {
+                // gpu_times.push(gpuTime / 1000);
+                gpu_time_this_frame += gpuTime / 1000;
+            });
+        } else {
+            timingHelper.getResult().then(gpuTime => {
+            })
+        }
+         */
+        timingHelper.getResult().then(gpuTime => gpu_time_this_frame += gpuTime);
 
         // numberOfPoints += nr_pointsInCurrentBuffer;
     }
@@ -511,9 +615,9 @@ async function generateFrame() {
 
         if (totalWorkGroups <= device.limits.maxComputeWorkgroupsPerDimension) {
             xWorkGroups = totalWorkGroups;
-        // } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 2)) {
-        //     yWorkGroups = Math.ceil(totalWorkGroups / device.limits.maxComputeWorkgroupsPerDimension);
-        //     xWorkGroups = Math.ceil(totalWorkGroups / yWorkGroups);
+            // } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 2)) {
+            //     yWorkGroups = Math.ceil(totalWorkGroups / device.limits.maxComputeWorkgroupsPerDimension);
+            //     xWorkGroups = Math.ceil(totalWorkGroups / yWorkGroups);
         } else if (totalWorkGroups <= Math.pow(device.limits.maxComputeWorkgroupsPerDimension, 3)) {
             zWorkGroups = Math.ceil(totalWorkGroups / (device.limits.maxComputeWorkgroupsPerDimension * device.limits.maxComputeWorkgroupsPerDimension));
             yWorkGroups = Math.ceil(totalWorkGroups / (device.limits.maxComputeWorkgroupsPerDimension * zWorkGroups));
@@ -524,7 +628,8 @@ async function generateFrame() {
 
 
         // Region Compute Pass
-        const computePass = commandEncoder.beginComputePass();
+        // const computePass = commandEncoder.beginComputePass();
+        const computePass = timingHelper.beginComputePass(commandEncoder);
         computePass.setPipeline(computePipeline);
         computePass.setBindGroup(0, compute_shader_bindGroup);
         computePass.dispatchWorkgroups(
@@ -536,8 +641,27 @@ async function generateFrame() {
         device.queue.submit([commandEncoder.finish()]);
         commandEncoder = device.createCommandEncoder();
 
+        /*
+        if (is_timing) {
+            timingHelper.getResult().then(gpuTime => {
+                // gpu_times.push(gpuTime / 1000);
+                gpu_time_this_frame += gpuTime / 1000;
+            });
+        } else {
+            timingHelper.getResult().then(gpuTime => {
+            })
+        }
+         */
+        timingHelper.getResult().then(gpuTime => gpu_time_this_frame += gpuTime);
+
         numberOfPoints += nr_pointsInCurrentBuffer;
     }
+
+    gpu_time_this_frame /= 1e6; // convert to ms
+    if (is_timing) {
+        gpu_times.push(gpu_time_this_frame);
+    }
+    // gpu_time_this_frame = 0;
 
     const batches_not_shown = [];
     for (let i = 0; i < batchHandler.numberOfBuffers(); i++) {
@@ -582,7 +706,23 @@ async function generateFrame() {
     numberOfPoints = 0;
 
     await upload_waiter;
+
+    // incorporate gpu time measurement
+    gpuTimePanel.update(gpu_time_this_frame, 10);
+    gpu_time_this_frame = 0;
     stats.end();
+
+    // time
+    const end_time = performance.now();
+    if (is_timing) {
+        const time_diff = end_time - start_time
+        total_frame_times.push(time_diff)
+        timed_for += time_diff;
+
+        if (timed_for > time_for) {
+            stop_measurement();
+        }
+    }
 
     requestAnimationFrame(generateFrame);
 }

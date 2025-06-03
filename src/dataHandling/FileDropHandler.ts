@@ -159,4 +159,12 @@ export class FileDropHandler {
         console.log("File(s) in drop zone");
         ev.preventDefault();
     }
+
+    /**
+     * Returns the names of the loaded files.
+     * @returns {string[]} The names of the loaded files.
+     */
+    getFileNames(): string[] {
+        return this.loadedFiles;
+    }
 }
