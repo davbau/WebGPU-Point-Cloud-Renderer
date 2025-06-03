@@ -458,8 +458,9 @@ async function generateFrame() {
     let commandEncoder = device.createCommandEncoder();
 
     // get mVP matrix
-    mat4.multiply(camera.getProjectionMatrix(), camera.getViewMatrix(), mVP);
-    mat4.multiply(mVP, modelMatrix, mVP);
+    const proj64 = Float64Array.from(camera.getProjectionMatrix());
+    const view64 = Float64Array.from(camera.getViewMatrix());
+    Util.multiplyMat4dTof32(proj64, view64, mVP);
 
     // reset depth buffer
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);

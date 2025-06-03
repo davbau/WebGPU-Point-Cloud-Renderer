@@ -267,4 +267,22 @@ export class Util {
         }
         return arr;
     }
+
+    /**
+     * Multiplies two 4x4 matrices represented as Float64Arrays and stores the result in a Float32Array.
+     * @param a Float64Array representing the first matrix.
+     * @param b Float64Array representing the second matrix.
+     * @param dest Float32Array where the result will be stored.
+     */
+    static multiplyMat4dTof32(a: Float64Array, b: Float64Array, dest: Float32Array): void {
+        for (let row = 0; row < 4; ++row) {
+            for (let col = 0; col < 4; ++col) {
+                let sum = 0;
+                for (let i = 0; i < 4; ++i) {
+                    sum += a[row + i * 4] * b[i + col * 4];
+                }
+                dest[row + col * 4] = sum;
+            }
+        }
+    }
 }
