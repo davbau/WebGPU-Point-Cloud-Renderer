@@ -287,6 +287,7 @@ const inputHandler = new InputHandlerInertialTurntableCamera(canvas, camera);
 inputHandler.registerInputHandlers();
 
 const modelMatrix = mat4.identity();
+const viewProjMatrix = Float64Array.from(mat4.create());
 const mVP = mat4.create();
 
 const fileDropHandler = new FileDropHandler(
@@ -460,7 +461,8 @@ async function generateFrame() {
     // get mVP matrix
     const proj64 = Float64Array.from(camera.getProjectionMatrix());
     const view64 = Float64Array.from(camera.getViewMatrix());
-    Util.multiplyMat4dTof32(proj64, view64, mVP);
+    Util.multiplyMat4dTof64(proj64, view64, viewProjMatrix);
+    // Util.multiplyMat4dTof32(proj64, view64, mVP);
 
     // reset depth buffer
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
@@ -478,7 +480,7 @@ async function generateFrame() {
         if (!batch.isWrittenToGPU()) {
             continue;
         }
-        if (!batch.isInFrustum(mVP)) {
+        if (!batch.isInFrustum(Float32Array.from(viewProjMatrix))) {
             // console.log(`batch ${batch.getID()} not on screen`);
             batches_renderType.push(-1);
             continue;
@@ -507,11 +509,14 @@ async function generateFrame() {
         const compute_depth_pipeline = compute_depth_pipelines[accuracy_level];
 
         // Region Uniform
+        mat4.translate(mat4.identity(), batch.getOrigin(), modelMatrix);
+        Util.multiplyMat4dTof32(viewProjMatrix, modelMatrix, mVP);
         // building the uniform buffer data
         const uniform_data = new Float32Array([
             screen_size[0], screen_size[1], 0, 0, // padding
             ...mVP,
-            ...batch.getOrigin(), 0,
+            // ...batch.getOrigin(), 0,
+            0, 0, 0, 0,
             ...batch.getBoxSize(), 0,
             accuracy_level, THREADS_PER_WORKGROUP, 0, 0,
         ]);
@@ -599,11 +604,14 @@ async function generateFrame() {
         const computePipeline = compute_pipelines[accuracy_level];
 
         // Region Uniform
+        mat4.translate(mat4.identity(), batch.getOrigin(), modelMatrix);
+        Util.multiplyMat4dTof32(viewProjMatrix, modelMatrix, mVP);
         // building the uniform buffer data
         const uniform_data = new Float32Array([
             screen_size[0], screen_size[1], 0, 0, // padding
             ...mVP,
-            ...batch.getOrigin(), 0,
+            // ...batch.getOrigin(), 0,
+            0, 0, 0, 0,
             ...batch.getBoxSize(), 0,
             accuracy_level, THREADS_PER_WORKGROUP, 0, 0,
         ]);

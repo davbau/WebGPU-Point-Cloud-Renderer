@@ -285,4 +285,16 @@ export class Util {
             }
         }
     }
+
+    static multiplyMat4dTof64(a: Float64Array, b: Float64Array, dest: Float64Array): void {
+        for (let row = 0; row < 4; ++row) {
+            for (let col = 0; col < 4; ++col) {
+                let sum = 0;
+                for (let i = 0; i < 4; ++i) {
+                    sum += a[row + i * 4] * b[i + col * 4];
+                }
+                dest[row + col * 4] = sum;
+            }
+        }
+    }
 }
