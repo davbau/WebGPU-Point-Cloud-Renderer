@@ -564,20 +564,9 @@ async function generateFrame() {
         device.queue.submit([commandEncoder.finish()]);
         commandEncoder = device.createCommandEncoder();
 
-        /*
-        if (is_timing) {
-            timingHelper.getResult().then(gpuTime => {
-                // gpu_times.push(gpuTime / 1000);
-                gpu_time_this_frame += gpuTime / 1000;
-            });
-        } else {
-            timingHelper.getResult().then(gpuTime => {
-            })
-        }
-         */
         timingHelper.getResult().then(gpuTime => gpu_time_this_frame += gpuTime);
 
-        // numberOfPoints += nr_pointsInCurrentBuffer;
+        numberOfPoints += nr_pointsInCurrentBuffer;
     }
 
     // Workgroup initial values for later
@@ -587,10 +576,7 @@ async function generateFrame() {
 
     // go through all the batches and render visible ones
     for (const batch of batchHandler.getBatches()) {
-        if (!batch.isWrittenToGPU()) {
-            continue;
-        }
-        if (!batch.isInFrustum(mVP))
+        if (!batches_shown.includes(batch.getID()))
             continue;
 
         // Region accuracy Level
@@ -609,6 +595,7 @@ async function generateFrame() {
                 accuracy_level = 2;
                 break;
         }
+        // Do not include the accuracy level because it was already added in the previous loop.
         // batches_renderType.push(accuracy_level);
 
         const computePipeline = compute_pipelines[accuracy_level];
@@ -620,7 +607,6 @@ async function generateFrame() {
         const uniform_data = new Float32Array([
             screen_size[0], screen_size[1], 0, 0, // padding
             ...mVP,
-            // ...batch.getOrigin(), 0,
             0, 0, 0, 0,
             ...batch.getBoxSize(), 0,
             accuracy_level, THREADS_PER_WORKGROUP, 0, 0,
@@ -660,20 +646,11 @@ async function generateFrame() {
         device.queue.submit([commandEncoder.finish()]);
         commandEncoder = device.createCommandEncoder();
 
-        /*
-        if (is_timing) {
-            timingHelper.getResult().then(gpuTime => {
-                // gpu_times.push(gpuTime / 1000);
-                gpu_time_this_frame += gpuTime / 1000;
-            });
-        } else {
-            timingHelper.getResult().then(gpuTime => {
-            })
-        }
-         */
+        // Get timing helper result
         timingHelper.getResult().then(gpuTime => gpu_time_this_frame += gpuTime);
 
-        numberOfPoints += nr_pointsInCurrentBuffer;
+        // Do not include calculation of number of points here because it was already done in the previous loop.
+        // numberOfPoints += nr_pointsInCurrentBuffer;
     }
 
     gpu_time_this_frame /= 1e6; // convert to ms

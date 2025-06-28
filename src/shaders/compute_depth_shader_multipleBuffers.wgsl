@@ -25,6 +25,7 @@ const factor = 1073741823.0; // 0b0011_1111_1111_1111_1111_1111_1111_1111
 /*F*/@group(0) @binding(4) var<storage, read> fineBuffer: array<u32>;
 // We don't need the color buffer for depth computation.
 
+// Leave this at 64, it is changed by the shader creator at run-time.
 @compute @workgroup_size(64, 1, 1)
 fn main(
     @builtin(global_invocation_id) gid: vec3<u32>,

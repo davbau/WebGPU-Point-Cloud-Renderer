@@ -15,8 +15,6 @@ struct Uniforms {
 //    color: u32,
 //};
 
-//const factor = 4294967296.0; // 2^32
-//const factor = 2147483648.0; // 2^31
 const factor = 1073741824; // 2^30
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -29,6 +27,7 @@ const factor = 1073741824; // 2^30
 /*M*/@group(0) @binding(5) var<storage, read> mediumBuffer: array<u32>;
 /*F*/@group(0) @binding(6) var<storage, read> fineBuffer: array<u32>;
 
+// Leave this at 64, it is changed by the shader creator at run-time.
 @compute @workgroup_size(64, 1, 1)
 fn main(
     @builtin(global_invocation_id) gid: vec3<u32>,
