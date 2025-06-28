@@ -315,10 +315,15 @@ stats.showPanel(0);
 /**
  * Reset the viewport so that the model is in the center of the view.
  * This function is called when the user presses the "view to model" button.
+ *
+ * <b>Important:</b> This function will be called once when the first model is loaded by the FileDropHandler Class.
+ *
+ * @param extent An optional parameter that defines the extent of the model.
+ * If not provided, the extent is calculated from the batch handler.
  */
-function resetViewport() {
+export function resetViewport(extent?: number[]) {
     // figure out extent of the model
-    const modelExtent = batchHandler.getTotalModelExtent();
+    const modelExtent = extent ? extent: batchHandler.getTotalModelExtent();
     console.log(`model extent: ${modelExtent}`);
 
     // set camera so that the model is in the center of the view

@@ -1,6 +1,8 @@
 import {LAS_FILE_ENDINGS, SmallLASLoader} from "./SmallLASLoader";
 import {BatchHandler} from "./BatchHandler";
 import {vec2} from "webgpu-matrix";
+import {log} from "console";
+import {resetViewport} from "../main";
 
 export class FileDropHandler {
     /**
@@ -127,6 +129,13 @@ export class FileDropHandler {
             }
 
             const header = await this.lasLoader.loadLasHeader(file);
+            if(this.loadedFiles.length == 0) {
+                const extent = [
+                    header.minX, header.minY, header.minZ,
+                    header.maxX, header.maxY, header.maxZ
+                ];
+                resetViewport(extent);
+            }
             console.log("loading las file", file, header);
 
             const points = await this.lasLoader.loadLasPointsAsBuffer(file, header);
