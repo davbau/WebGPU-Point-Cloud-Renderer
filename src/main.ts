@@ -97,7 +97,26 @@ if (handler_threads_per_workgroup) {
         1);
 }
 
-const humanReadableBenchmarkResult = !urlParams.get('benchmark');
+/**
+ * Check if the benchmark mode is enabled.
+ * If this is the case, the screen size is set to 1280x720.
+ *
+ * Also, the resize observer is <b>disabled</b> to prevent resizing of the canvas.
+ */
+const isInBenchmarkMode = urlParams.get('benchmark');
+
+// Check if we are in benchmark mode and set the screen size to 1280x720
+if (isInBenchmarkMode) {
+    screen_size = vec2.create(1280, 720);
+
+    canvas.width = screen_size[0];
+    canvas.height = screen_size[1];
+
+    canvas.style.width = screen_size[0] + "px";
+    canvas.style.height = screen_size[1] + "px";
+
+    console.warn("Running in benchmark mode with screen size: ", screen_size);
+}
 
 const container = document.getElementById("container") as HTMLDivElement;   // The container element
 
@@ -109,13 +128,16 @@ const params: {
     show_debug_div: boolean,
 } = {
     renderQuality: 'auto',
-    show_debug_div: true,
+    show_debug_div: false,
 };
 gui.add(params, 'renderQuality', ['auto', 'coarse', "medium", "fine"]);
 gui.add(params, 'show_debug_div').onChange((value) => setDebugDivVisibility(value));
 gui.add({view_to_model: resetViewport}, 'view_to_model').name("View to Model");
 // This is done later down the line, I included it here to show that the functionality exists.
 // gui.add({run_benchmark: start_measurement()}, 'run_benchmark').name("Run Benchmark");
+
+// Disable the debug div by default
+setDebugDivVisibility(false);
 
 // Region vertex buffer
 const quad_vertexBuffer = create_and_bind_quad_VertexBuffer(device);
@@ -253,6 +275,9 @@ const display_renderPassDescriptor = Util.create_display_RenderPassDescriptor(co
  * The size of the canvas is stored in the {@link screen_size} variable.
  */
 const observer = new ResizeObserver(entries => {
+    if (isInBenchmarkMode) {
+        return;
+    }
     for (const entry of entries) {
         const width = entry.contentBoxSize[0].inlineSize;
         const height = entry.contentBoxSize[0].blockSize;
@@ -422,7 +447,7 @@ function stop_measurement() {
     `)
     is_timing = false;
 
-    if (humanReadableBenchmarkResult) {
+    if (isInBenchmarkMode) {
         download_benchmark_result(`bSize-${(BUFFER_HANDLER_SIZE / (Math.pow(2, 20))).toFixed(0)}M_TpW-${THREADS_PER_WORKGROUP}_model-${fileDropHandler.getFileNames()[0]}`, gpu_times, total_frame_times);
     } else
         download_benchmark_result(`${(BUFFER_HANDLER_SIZE / (Math.pow(2, 20))).toFixed(0)}-${THREADS_PER_WORKGROUP}`, gpu_times, total_frame_times);
