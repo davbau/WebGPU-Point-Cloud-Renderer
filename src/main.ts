@@ -399,8 +399,10 @@ const time_for = 5 * 1000;
 // Duration the test has been run in ms
 let timed_for = 0;
 
+// Array with promises for when the GPU timing result is available for a previous frame.
+const pendingGpuTimes: Promise<number>[] = [];
+// Array with retrieved GPU times in ms.
 const gpu_times: number[] = [];
-let gpu_time_this_frame = 0;
 
 const total_frame_times: number[] = [];
 
@@ -589,7 +591,9 @@ async function generateFrame() {
         device.queue.submit([commandEncoder.finish()]);
         commandEncoder = device.createCommandEncoder();
 
-        timingHelper.getResult().then(gpuTime => gpu_time_this_frame += gpuTime);
+        // Save a promise to retrieve the GPU timing result later
+        const resultPromise = timingHelper.getResult();
+        pendingGpuTimes.push(resultPromise);
 
         numberOfPoints += nr_pointsInCurrentBuffer;
     }
@@ -671,18 +675,13 @@ async function generateFrame() {
         device.queue.submit([commandEncoder.finish()]);
         commandEncoder = device.createCommandEncoder();
 
-        // Get timing helper result
-        timingHelper.getResult().then(gpuTime => gpu_time_this_frame += gpuTime);
+        // Save a promise to retrieve the GPU timing result later
+        const resultPromise = timingHelper.getResult();
+        pendingGpuTimes.push(resultPromise);
 
         // Do not include calculation of number of points here because it was already done in the previous loop.
         // numberOfPoints += nr_pointsInCurrentBuffer;
     }
-
-    gpu_time_this_frame /= 1e6; // convert to ms
-    if (is_timing) {
-        gpu_times.push(gpu_time_this_frame);
-    }
-    // gpu_time_this_frame = 0;
 
     const batches_not_shown = [];
     for (let i = 0; i < batchHandler.numberOfBuffers(); i++) {
@@ -728,9 +727,20 @@ async function generateFrame() {
 
     await upload_waiter;
 
+    let gpu_time_this_frame = 0;
+    // Handle timing results from a few frames ago
+    if (pendingGpuTimes.length > 3) {
+        const oldPromise = pendingGpuTimes.shift();
+        const gpuTime = await oldPromise;
+        if (gpuTime) {
+            gpu_time_this_frame = gpuTime / 1e6; // convert to ms
+            if (is_timing)
+                gpu_times.push(gpu_time_this_frame);
+        }
+    }
+
     // incorporate gpu time measurement
     gpuTimePanel.update(gpu_time_this_frame, 10);
-    gpu_time_this_frame = 0;
     stats.end();
 
     // time
