@@ -9,6 +9,10 @@ I found these two resources very helpful when working on this project.
 
 
 ## Usage
+The project is hosted on github pages and can be used via [this link](https://davbau.github.io/WebGPU-Point-Cloud-Renderer/). Two query parameters exist, `bSize` and `tpw` which set the size per batch in memory and the threads per workgroup (max 256) respectively.
+The `bSize` parameter can be set as a number, interpreted as the number of points, appended with `m` to indicate megabytes and `g` to indicate gigabytes.
+This is an example using 64 megabytes and 128 threads per workgroups: [https://davbau.github.io/WebGPU-Point-Cloud-Renderer/?benchmark=true&bSize=64M&tpw=128](https://davbau.github.io/WebGPU-Point-Cloud-Renderer/?benchmark=true&bSize=64M&tpw=128).
+
 The entire website is a canvas element. You can drag and drop the LAS or LAZ files you want to load onto the canvas. The point cloud will then be loaded.
 This might take some time. The same filename can not be loaded twice.
 
