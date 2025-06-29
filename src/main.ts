@@ -447,7 +447,7 @@ function stop_measurement() {
     `)
     is_timing = false;
 
-    if (isInBenchmarkMode) {
+    if (!isInBenchmarkMode) {
         download_benchmark_result(`bSize-${(BUFFER_HANDLER_SIZE / (Math.pow(2, 20))).toFixed(0)}M_TpW-${THREADS_PER_WORKGROUP}_model-${fileDropHandler.getFileNames()[0]}`, gpu_times, total_frame_times);
     } else
         download_benchmark_result(`${(BUFFER_HANDLER_SIZE / (Math.pow(2, 20))).toFixed(0)}-${THREADS_PER_WORKGROUP}`, gpu_times, total_frame_times);
