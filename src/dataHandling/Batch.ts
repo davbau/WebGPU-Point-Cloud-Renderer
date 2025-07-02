@@ -240,20 +240,20 @@ export class Batch {
             const coarseX = (xDist >> 20) & 0x3FF;
             const coarseY = (yDist >> 20) & 0x3FF;
             const coarseZ = (zDist >> 20) & 0x3FF;
-            courseView.setUint32(this.filledSize() * SIZE_OF_POINT + i * 4, (coarseX << 20) | (coarseY << 10) | coarseZ, true);
+            courseView.setUint32(this.filledSize() * 4 + i * 4, (coarseX << 20) | (coarseY << 10) | coarseZ, true);
 
             const mediumX = (xDist >> 10) & 0x3FF;
             const mediumY = (yDist >> 10) & 0x3FF;
             const mediumZ = (zDist >> 10) & 0x3FF;
-            mediumView.setUint32(this.filledSize() * SIZE_OF_POINT + i * 4, (mediumX << 20) | (mediumY << 10) | mediumZ, true);
+            mediumView.setUint32(this.filledSize() * 4 + i * 4, (mediumX << 20) | (mediumY << 10) | mediumZ, true);
 
             const fineX = (xDist >> 0) & 0x3FF;
             const fineY = (yDist >> 0) & 0x3FF;
             const fineZ = (zDist >> 0) & 0x3FF;
-            fineView.setUint32(this.filledSize() * SIZE_OF_POINT + i * 4, (fineX << 20) | (fineY << 10) | fineZ, true);
+            fineView.setUint32(this.filledSize() * 4 + i * 4, (fineX << 20) | (fineY << 10) | fineZ, true);
 
             // color[i] = c;
-            colorView.setUint32(this.filledSize() * SIZE_OF_POINT + i * 4, c, true);
+            colorView.setUint32(this.filledSize() * 4 + i * 4, c, true);
         }
 
         // Buffer is ready to be written to the GPU. Can be done in the render loop so only one Buffer is written per frame.

@@ -54,7 +54,7 @@ export class FileDropHandler {
             frameBuffer,
             compute_depth_shader_bindGroupLayouts,
             compute_shader_bindGroupLayouts,
-            maxBufferSize / SIZE_OF_POINT,
+            maxBufferSize,
             screenSize
         );
 
