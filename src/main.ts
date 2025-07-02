@@ -404,6 +404,8 @@ const pendingGpuTimes: Promise<number>[] = [];
 // Array with retrieved GPU times in ms.
 const gpu_times: number[] = [];
 
+const cpu_frame_times: number[] = [];
+
 const total_frame_times: number[] = [];
 
 gui.add({run_benchmark: start_measurement}, 'run_benchmark').name("Run Benchmark");
@@ -434,25 +436,33 @@ function stop_measurement() {
     });
     avg_gpu_times /= gpu_times.length;
 
-    let avg_frame_times: number = 0;
-    total_frame_times.forEach(frame => {
-        avg_frame_times += frame
+    let avg_cpu_times: number = 0;
+    cpu_frame_times.forEach(frame => {
+        avg_cpu_times += frame
     });
-    avg_frame_times /= total_frame_times.length;
+    avg_cpu_times /= cpu_frame_times.length;
 
-    const avg_fps = (total_frame_times.length / timed_for) * 1000;
+    let avg_total_times = 0;
+    total_frame_times.forEach(frame => {
+        avg_total_times += frame
+    });
+    avg_total_times /= total_frame_times.length;
+
+    // const avg_fps = (cpu_frame_times.length / timed_for) * 1000;
+    const avg_fps = 1000 / avg_total_times;
 
     console.log(`
     Average GPU time: ${avg_gpu_times} ms
-    Average Frame time: ${avg_frame_times} ms
+    Average CPU time: ${avg_cpu_times} ms
+    Average total time: ${avg_total_times} ms
     Average FPS: ${avg_fps}
     `)
     is_timing = false;
 
     if (!isInBenchmarkMode) {
-        download_benchmark_result(`bSize-${(BUFFER_HANDLER_SIZE / (Math.pow(2, 20))).toFixed(0)}M_TpW-${THREADS_PER_WORKGROUP}_model-${fileDropHandler.getFileNames()[0]}`, gpu_times, total_frame_times);
+        download_benchmark_result(`bSize-${(BUFFER_HANDLER_SIZE / (Math.pow(2, 20))).toFixed(0)}M_TpW-${THREADS_PER_WORKGROUP}_model-${fileDropHandler.getFileNames()[0]}`, gpu_times, cpu_frame_times);
     } else
-        download_benchmark_result(`${(BUFFER_HANDLER_SIZE / (Math.pow(2, 20))).toFixed(0)}-${THREADS_PER_WORKGROUP}`, gpu_times, total_frame_times);
+        download_benchmark_result(`${(BUFFER_HANDLER_SIZE / (Math.pow(2, 20))).toFixed(0)}-${THREADS_PER_WORKGROUP}`, gpu_times, cpu_frame_times);
 }
 
 /**
@@ -475,18 +485,29 @@ function download_benchmark_result(name: string, gpus: number[], totals: number[
     document.body.removeChild(a);
 }
 
+// function incremental_load() {
+//     const n = 1e4;
+//     fileDropHandler.requestNPointsToLoad(n);
+// }
+
 
 const initial_depthBuffer = new Float32Array(canvas.width * canvas.height).fill(0xFFFFFFFF);
 // device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
 // unmap depth buffer
 depthBuffer.unmap();
 
+let lastFrameTime = performance.now();
+
 let numberOfPoints = 0;
 
 /**
  * The main function that generates the frame. This function is called recursively using requestAnimationFrame.
  */
-async function generateFrame() {
+async function generateFrame(now: number) {
+    const frameTime = now - lastFrameTime;
+    lastFrameTime = now;
+    total_frame_times.push(frameTime);
+
     const start_time = performance.now();
     // update stats
     stats.begin();
@@ -503,7 +524,8 @@ async function generateFrame() {
 
     // reset depth buffer
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
-    const upload_waiter = batchHandler.writeOneBufferToGPU();
+    // const upload_waiter = batchHandler.writeOneBufferToGPU();
+    fileDropHandler.requestNPointsToLoad(1e4 * SIZE_OF_POINT);
     const batches_shown: number[] = [];
     const batches_renderType: number[] = [];
 
@@ -725,7 +747,7 @@ async function generateFrame() {
     device.queue.submit([commandEncoder.finish()]); // submit
     numberOfPoints = 0;
 
-    await upload_waiter;
+    // await upload_waiter;
 
     let gpu_time_this_frame = 0;
     // Handle timing results from a few frames ago
@@ -747,7 +769,7 @@ async function generateFrame() {
     const end_time = performance.now();
     if (is_timing) {
         const time_diff = end_time - start_time
-        total_frame_times.push(time_diff)
+        cpu_frame_times.push(time_diff)
         timed_for += time_diff;
 
         if (timed_for > time_for) {

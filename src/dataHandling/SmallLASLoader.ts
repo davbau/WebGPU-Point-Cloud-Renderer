@@ -1,4 +1,4 @@
-import {double, Point, u_char, u_long, u_long_long, u_short} from "../types/c_equivalents";
+import {double, Point, SIZE_OF_POINT, u_char, u_long, u_long_long, u_short} from "../types/c_equivalents";
 import LasWorker from "worker-loader!./LasLoaderWebWorker.worker.ts";
 
 export const LAS_FILE_ENDINGS = [
@@ -201,6 +201,45 @@ export class SmallLASLoader {
 
         return this.loadLasPointsAsBufferHelper(buffer, header, max_points);
         // return this.loadLasPointsAsBufferHelperViaWorker(buffer, header, max_points);
+    }
+
+    async loadLasPointsAsBuffer_FromPointRecords(buffer: ArrayBuffer, header: LASHeader_small, max_points: number = 1e12): Promise<ArrayBuffer> {
+        // return this.loadLasPointsAsBufferHelper(buffer, header, max_points);
+        const dataView = new DataView(buffer);
+
+        // see https://github.com/m-schuetz/SimLOD/blob/eb9fde28b0f13c67eb03a919504840e46e940004/tools/las2simlod.mjs#L89-L93
+        let rgbOffset = 0;
+        if (header.pointDataFormatID === 2) rgbOffset = 20;
+        if (header.pointDataFormatID === 3) rgbOffset = 28;
+        if (header.pointDataFormatID === 5) rgbOffset = 28;
+        if (header.pointDataFormatID === 7) rgbOffset = 30;
+
+        const numberOfPoints_int = buffer.byteLength / SIZE_OF_POINT;
+        const pointBuffer = new ArrayBuffer(buffer.byteLength);
+        const pointView = new DataView(pointBuffer);
+
+        for (let i = 0; i < numberOfPoints_int; i++) {
+            // this.handleOnePoint(header, dataView, pointView, i, 1, rgbOffset);
+            let x = dataView.getInt32(0, true) * header.xScaleFactor + header.xOffset;
+            let y = dataView.getInt32(4, true) * header.yScaleFactor + header.yOffset;
+            let z = dataView.getInt32(8, true) * header.zScaleFactor + header.zOffset;
+
+            let R = this.colorTo256(dataView.getUint16(rgbOffset + 0, true));
+            let G = this.colorTo256(dataView.getUint16(rgbOffset + 2, true));
+            let B = this.colorTo256(dataView.getUint16(rgbOffset + 4, true));
+            let r = Math.floor(R > 255 ? R / 256 : R);
+            let g = Math.floor(G > 255 ? G / 256 : G);
+            let b = Math.floor(B > 255 ? B / 256 : B);
+
+            // write points into buffer
+            const writeOffset = i * 16;
+            pointView.setFloat32(writeOffset + 0, x, true);
+            pointView.setFloat32(writeOffset + 4, y, true);
+            pointView.setFloat32(writeOffset + 8, z, true);
+            pointView.setUint32(writeOffset + 12, r << 16 | g << 8 | b, true);
+        }
+
+        return pointBuffer;
     }
 
     /**

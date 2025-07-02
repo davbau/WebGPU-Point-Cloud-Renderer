@@ -1,8 +1,9 @@
-import {LAS_FILE_ENDINGS, SmallLASLoader} from "./SmallLASLoader";
+import {LAS_FILE_ENDINGS, LASHeader_small, SmallLASLoader} from "./SmallLASLoader";
 import {BatchHandler} from "./BatchHandler";
 import {vec2} from "webgpu-matrix";
 import {log} from "console";
 import {resetViewport} from "../main";
+import {SIZE_OF_POINT} from "../types/c_equivalents";
 
 export class FileDropHandler {
     /**
@@ -28,6 +29,9 @@ export class FileDropHandler {
 
     private batchHandler: BatchHandler;
 
+    private files_to_load: ArrayBuffer[] = [];
+    private file_headers_to_load: LASHeader_small[] = [];
+
     constructor(container: HTMLElement,
                 device: GPUDevice,
                 uniformBuffer: GPUBuffer,
@@ -50,7 +54,7 @@ export class FileDropHandler {
             frameBuffer,
             compute_depth_shader_bindGroupLayouts,
             compute_shader_bindGroupLayouts,
-            maxBufferSize,
+            maxBufferSize / SIZE_OF_POINT,
             screenSize
         );
 
@@ -136,14 +140,70 @@ export class FileDropHandler {
                 ];
                 resetViewport(extent);
             }
-            console.log("loading las file", file, header);
 
-            const points = await this.lasLoader.loadLasPointsAsBuffer(file, header);
-            console.log("got ", points, " points from ", file.name);
-
-            this.batchHandler.add(points).then(() => console.log("Added points to buffer"));
             this.loadedFiles.push(file.name);
+            this.file_headers_to_load.push(header);
+            // this.files_to_load.push(await file.arrayBuffer());
+            // take out point data from file
+            const fileBuffer = await file.arrayBuffer();
+            const nr_points = Number(header.numberOfPointRecords);
+            const byteLengthOfPointsOnFile = nr_points * header.pointDataRecordLength;
+            const points_buffer = fileBuffer.slice(header.offsetToPointData, header.offsetToPointData + byteLengthOfPointsOnFile);
+            this.files_to_load.push(points_buffer);
+
+            // let start = performance.now();
+            // const points = await this.lasLoader.loadLasPointsAsBuffer(file, header);
+            // let end = performance.now();
+            // console.log("Transformed points in ", end - start, "ms");
+            // console.log("got ", points, " points from ", file.name);
+            //
+            // let start2 = performance.now();
+            // this.batchHandler.add(points).then(() => console.log("Added points to buffer"));
+            // let end2 = performance.now();
+            // console.log("Added points to buffer in ", end2 - start2, "ms");
+            // this.loadedFiles.push(file.name);
         }
+    }
+
+    /**
+     * Requests the next n points to load from the files. Will use the first file that has points left to load. (Queue-like behavior)
+     *
+     * After loading the points, they will be added to the batch handler and immediately written to the GPU.
+     *
+     * @param n the number of points to load.
+     */
+    requestNPointsToLoad(n: number) {
+        if (this.files_to_load.length === 0) {
+            // console.warn("No files to load");
+            return;
+        }
+
+        // Get the first file that has points left to load
+        const file = this.files_to_load[0];
+        if (!file) {
+            // throw new Error("No file loaded");
+            // console.warn("No file to load points from");
+            return;
+        }
+
+        // Load the points from the file
+        const chunk = file.slice(0, n);
+        this.lasLoader.loadLasPointsAsBuffer_FromPointRecords(chunk, this.file_headers_to_load[0]).then(points => {
+            if (points.byteLength === 0) {
+                console.warn("No points loaded from file");
+                // Remove the file from the queue if no points were loaded
+                this.files_to_load.shift();
+                this.file_headers_to_load.shift();
+                return;
+            }
+            // Remove the loaded points from the file
+            this.files_to_load[0] = file.slice(n);
+            this.batchHandler.add(points).then(() => {
+                this.batchHandler.writeOneBufferToGPU().then(() => console.log("Successfully added points to batch buffer"));
+            });
+        }).catch(err => {
+            console.error("Error loading points from file", err);
+        });
     }
 
     /**
