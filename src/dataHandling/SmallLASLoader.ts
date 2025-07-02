@@ -214,19 +214,20 @@ export class SmallLASLoader {
         if (header.pointDataFormatID === 5) rgbOffset = 28;
         if (header.pointDataFormatID === 7) rgbOffset = 30;
 
-        const numberOfPoints_int = buffer.byteLength / SIZE_OF_POINT;
-        const pointBuffer = new ArrayBuffer(buffer.byteLength);
+        const numberOfPoints_int = buffer.byteLength / header.pointDataRecordLength;
+        const pointBuffer = new ArrayBuffer(numberOfPoints_int * SIZE_OF_POINT);
         const pointView = new DataView(pointBuffer);
 
         for (let i = 0; i < numberOfPoints_int; i++) {
+            const read_offset = i * header.pointDataRecordLength;
             // this.handleOnePoint(header, dataView, pointView, i, 1, rgbOffset);
-            let x = dataView.getInt32(0, true) * header.xScaleFactor + header.xOffset;
-            let y = dataView.getInt32(4, true) * header.yScaleFactor + header.yOffset;
-            let z = dataView.getInt32(8, true) * header.zScaleFactor + header.zOffset;
+            let x = dataView.getInt32(read_offset + 0, true) * header.xScaleFactor + header.xOffset;
+            let y = dataView.getInt32(read_offset + 4, true) * header.yScaleFactor + header.yOffset;
+            let z = dataView.getInt32(read_offset + 8, true) * header.zScaleFactor + header.zOffset;
 
-            let R = this.colorTo256(dataView.getUint16(rgbOffset + 0, true));
-            let G = this.colorTo256(dataView.getUint16(rgbOffset + 2, true));
-            let B = this.colorTo256(dataView.getUint16(rgbOffset + 4, true));
+            let R = this.colorTo256(dataView.getUint16(read_offset + rgbOffset + 0, true));
+            let G = this.colorTo256(dataView.getUint16(read_offset + rgbOffset + 2, true));
+            let B = this.colorTo256(dataView.getUint16(read_offset + rgbOffset + 4, true));
             let r = Math.floor(R > 255 ? R / 256 : R);
             let g = Math.floor(G > 255 ? G / 256 : G);
             let b = Math.floor(B > 255 ? B / 256 : B);

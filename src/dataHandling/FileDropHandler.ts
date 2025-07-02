@@ -185,9 +185,14 @@ export class FileDropHandler {
             // console.warn("No file to load points from");
             return;
         }
+        const header = this.file_headers_to_load[0];
+        if (!header) {
+            return;
+        }
 
         // Load the points from the file
-        const chunk = file.slice(0, n);
+        const byteLength_to_cut = n * header.pointDataRecordLength;
+        const chunk = file.slice(0, byteLength_to_cut);
         this.lasLoader.loadLasPointsAsBuffer_FromPointRecords(chunk, this.file_headers_to_load[0]).then(points => {
             if (points.byteLength === 0) {
                 console.warn("No points loaded from file");
@@ -197,7 +202,7 @@ export class FileDropHandler {
                 return;
             }
             // Remove the loaded points from the file
-            this.files_to_load[0] = file.slice(n);
+            this.files_to_load[0] = file.slice(byteLength_to_cut);
             this.batchHandler.add(points).then(() => {
                 this.batchHandler.writeOneBufferToGPU().then(() => console.log("Successfully added points to batch buffer"));
             });

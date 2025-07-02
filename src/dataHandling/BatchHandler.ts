@@ -106,10 +106,21 @@ export class BatchHandler {
 
         while (remainingData.byteLength > 0) {
             const currentBatch = this._batches[this._batches.length - 1];
+            const old_promise = currentBatch.readOutOldPoints();
             const currentBatchFilledSize = currentBatch.filledSize();
-            const remainingSpace = this._batchSize - currentBatchFilledSize * 4;
+            const remainingSpace = this._batchSize - currentBatchFilledSize * 16;
 
-            const dataToWrite = remainingData.slice(0, remainingSpace);
+            let dataToWrite = remainingData.slice(0, remainingSpace);
+            // I have to take the old points back out of the buffer and recompute them with the new bounding box.
+            const oldPoints = await old_promise;
+            if (oldPoints && oldPoints.byteLength > 0) {
+                // If there are old points, we need to add them to the data to write.
+                const oldPointsByteLength = oldPoints.byteLength;
+                const newDataToWrite = new Uint8Array(dataToWrite.byteLength + oldPointsByteLength);
+                newDataToWrite.set(new Uint8Array(oldPoints), 0);
+                newDataToWrite.set(new Uint8Array(dataToWrite), oldPointsByteLength);
+                dataToWrite = newDataToWrite.buffer;
+            }
             const wait = currentBatch.loadData(dataToWrite);
 
             remainingData = remainingData.slice(remainingSpace);
