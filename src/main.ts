@@ -61,7 +61,7 @@ const maxStorageBufferBindingSize = device.limits.maxStorageBufferBindingSize;
 // Read out url parameter for buffer handler size.
 const urlParams = new URLSearchParams(window.location.search);
 let handlerSizeParameter = urlParams.get('bSize');
-let BUFFER_HANDLER_SIZE = ((Math.pow(2, 20))) * SIZE_OF_POINT; // for storage 2^20 is about 1e6
+let BUFFER_HANDLER_SIZE = ((Math.pow(2, 20))) * 128; // for storage 2^20 is about 1e6
 if (handlerSizeParameter) {
     handlerSizeParameter = handlerSizeParameter.toLowerCase();
     let decoded = 0;
@@ -85,7 +85,7 @@ if (handlerSizeParameter) {
 }
 console.log(`BUFFER_HANDLER_SIZE: ${BUFFER_HANDLER_SIZE / Math.pow(2, 20)}M`);
 
-let THREADS_PER_WORKGROUP = 64;
+let THREADS_PER_WORKGROUP = 256;
 let handler_threads_per_workgroup = urlParams.get('tpw');
 if (handler_threads_per_workgroup) {
     console.log("tpw: ", handler_threads_per_workgroup);
