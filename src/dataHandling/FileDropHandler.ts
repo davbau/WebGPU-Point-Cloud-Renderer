@@ -207,7 +207,7 @@ export class FileDropHandler {
         //     this.batchHandler.writeOneBufferToGPU().then(() => console.log("Successfully added points to batch buffer"));
         // });
         this.batchHandler.add(points);
-        this.batchHandler.writeOneBufferToGPU();
+        // this.batchHandler.writeOneBufferToGPU();
     }
 
     /**

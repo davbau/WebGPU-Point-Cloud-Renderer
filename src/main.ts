@@ -348,7 +348,7 @@ stats.showPanel(0);
  */
 export function resetViewport(extent?: number[]) {
     // figure out extent of the model
-    const modelExtent = extent ? extent: batchHandler.getTotalModelExtent();
+    const modelExtent = extent ? extent : batchHandler.getTotalModelExtent();
     console.log(`model extent: ${modelExtent}`);
 
     // set camera so that the model is in the center of the view
@@ -526,7 +526,7 @@ async function generateFrame(now: number) {
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
     // const upload_waiter = batchHandler.writeOneBufferToGPU();
     // fileDropHandler.requestNPointsToLoad(1e6);
-    fileDropHandler.requestNPointsToLoad(Math.pow(2, 20)/2);
+    fileDropHandler.requestNPointsToLoad(Math.pow(2, 20) / 4);
     const batches_shown: number[] = [];
     const batches_renderType: number[] = [];
 

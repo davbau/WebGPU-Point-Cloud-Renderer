@@ -190,7 +190,8 @@ export class Batch {
 
         this._oldPointsBuffer = allData.buffer;
 
-        return this.loadData(allData.buffer);
+        this.loadData(allData.buffer);
+        this.writeDataToGPUBuffer(true);
     }
 
     /**
@@ -290,60 +291,6 @@ export class Batch {
 
         this._filledSize += numPointsToLoad;
         // return;
-    }
-
-    /**
-     * Read out all pionts currently in Batch and transform them back to their original coordinates.
-     */
-    public async readOutOldPoints(): Promise<ArrayBuffer> {
-        const numPoints = this._filledSize;
-        const data = new ArrayBuffer(numPoints * 16);
-        const dataView = new DataView(data);
-
-        const coarseView = new DataView(this.hostBuffer_coarse!.buffer);
-        const mediumView = new DataView(this.hostBuffer_medium!.buffer);
-        const fineView = new DataView(this.hostBuffer_fine!.buffer);
-        const colorView = new DataView(this.hostBuffer_color!.buffer);
-
-        const boxSize = this.getBoxSize();
-        const origin = this.getOrigin();
-
-        for (let i = 0; i < numPoints; i++) {
-            // read out coarse, medium and fine
-            const coarse = coarseView.getUint32(i * 4, true);
-            const medium = mediumView.getUint32(i * 4, true);
-            const fine = fineView.getUint32(i * 4, true);
-            const c = colorView.getUint32(i * 4, true);
-
-            // transform to [0, 1]
-            let xDist = ((coarse >> 20) & 0x3FF) / (2 ** 10 - 1);
-            let yDist = ((coarse >> 10) & 0x3FF) / (2 ** 10 - 1);
-            let zDist = ((coarse >> 0) & 0x3FF) / (2 ** 10 - 1);
-
-            xDist += ((medium >> 20) & 0x3FF) / (2 ** 10 - 1) / (2 ** 10);
-            yDist += ((medium >> 10) & 0x3FF) / (2 ** 10 - 1) / (2 ** 10);
-            zDist += ((medium >> 0) & 0x3FF) / (2 ** 10 - 1) / (2 ** 10);
-
-            xDist += ((fine >> 20) & 0x3FF) / (2 ** 10 - 1) / (2 ** 20);
-            yDist += ((fine >> 10) & 0x3FF) / (2 ** 10 - 1) / (2 ** 20);
-            zDist += ((fine >> 0) & 0x3FF) / (2 ** 10 - 1) / (2 ** 20);
-
-            // transform to [0, boxSize]
-            xDist *= boxSize[0];
-            yDist *= boxSize[1];
-            zDist *= boxSize[2];
-            // transform to [origin, origin + boxSize]
-            xDist += origin[0];
-            yDist += origin[1];
-            zDist += origin[2];
-            // write to data
-            dataView.setFloat32(i * 16, xDist, true);
-            dataView.setFloat32(i * 16 + 4, yDist, true);
-            dataView.setFloat32(i * 16 + 8, zDist, true);
-            dataView.setUint32(i * 16 + 12, c, true);
-        }
-
-        return data;
     }
 
     /**
