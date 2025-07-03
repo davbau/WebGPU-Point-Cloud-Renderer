@@ -203,7 +203,7 @@ export class SmallLASLoader {
         // return this.loadLasPointsAsBufferHelperViaWorker(buffer, header, max_points);
     }
 
-    async loadLasPointsAsBuffer_FromPointRecords(buffer: ArrayBuffer, header: LASHeader_small, max_points: number = 1e12): Promise<ArrayBuffer> {
+    loadLasPointsAsBuffer_FromPointRecords(buffer: ArrayBuffer, header: LASHeader_small, max_points: number = 1e12): ArrayBuffer {
         // return this.loadLasPointsAsBufferHelper(buffer, header, max_points);
         const dataView = new DataView(buffer);
 

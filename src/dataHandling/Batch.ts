@@ -1,5 +1,5 @@
 import {mat4, vec2, vec3, vec4} from "webgpu-matrix";
-import {SIZE_OF_POINT, u_int32} from "../types/c_equivalents";
+import {u_int32} from "../types/c_equivalents";
 import {Util} from "../utils/util";
 
 type UniformType = {
@@ -42,6 +42,8 @@ export class Batch {
      * @private
      */
     private _bufferSize: number;
+
+    private _oldPointsBuffer?: ArrayBuffer;
 
     /**
      * The screen size in pixels.
@@ -148,6 +150,9 @@ export class Batch {
         this.hostBuffer_fine = new Uint32Array(this.batchSize);
         this.hostBuffer_color = new Uint32Array(this.batchSize);
 
+        // this._oldPointsBuffer = new ArrayBuffer(this._batchSize * SIZE_OF_POINT);
+        this._oldPointsBuffer = new ArrayBuffer(0);
+
         this.buffersReadyToWrite = false;
         this.buffersInFlight = false;
         this.buffersWrittenToGPU = false;
@@ -175,6 +180,19 @@ export class Batch {
         });
     }
 
+    addNewData(data: ArrayBuffer) {
+        // Add the new data to the old points buffer.
+        const oldPointsBuffer = new Uint8Array(this._oldPointsBuffer || new ArrayBuffer(0));
+        const newData = new Uint8Array(data);
+        const allData = new Uint8Array(oldPointsBuffer.length + newData.length);
+        allData.set(oldPointsBuffer, 0);
+        allData.set(newData, oldPointsBuffer.length);
+
+        this._oldPointsBuffer = allData.buffer;
+
+        return this.loadData(allData.buffer);
+    }
+
     /**
      * Load points into the batch. Each point has to be processed into a fine, medium and coarse representation and then loaded into the corresponding GPU buffer.
      * The bounding box {@link _boundingBox} and the size of the batch are also updated.
@@ -182,13 +200,20 @@ export class Batch {
      * x, y, z are the coordinates of the point and c is the color of the point.
      * x, y, z are f32 and c is an uint32.
      */
-    async loadData(data: ArrayBuffer): Promise<void> {
-        const numPoints = data.byteLength / 16;
-        // const numPointsToLoad = Math.min(numPoints, this.batchSize - this._filledSize);
-        const numPointsToLoad = numPoints;
+    loadData(data: ArrayBuffer) {
+        // // add old points to the current input.
+        // const all_data = new Uint8Array(this._filledSize * 16 + new_data.byteLength);
+        // if (this._oldPointsBuffer && this._oldPointsBuffer.byteLength > 0) {
+        //     all_data.set(new Uint8Array(this._oldPointsBuffer), 0);
+        // }
+        // all_data.set(new Uint8Array(new_data), this._filledSize * 16);
+        // const data = all_data.buffer;
+        //
+        // // const numPointsToLoad = Math.min(numPoints, this.batchSize - this._filledSize);
+        const numPointsToLoad = data.byteLength / 16;
 
         // find bounding box
-        const boundingBoxFound = this.findBoundingBox(data, numPointsToLoad);
+        this.findBoundingBox(data, numPointsToLoad);
 
         // reset buffers
         this._filledSize = 0;
@@ -199,7 +224,7 @@ export class Batch {
         const fineView = new DataView(this.hostBuffer_fine!.buffer);
         const colorView = new DataView(this.hostBuffer_color!.buffer);
 
-        await boundingBoxFound;
+        // await boundingBoxFound;
 
         const boxSize = this.getBoxSize();
         const origin = this.getOrigin();
@@ -264,7 +289,7 @@ export class Batch {
         this.buffersReadyToWrite = true;
 
         this._filledSize += numPointsToLoad;
-        return;
+        // return;
     }
 
     /**
@@ -327,7 +352,7 @@ export class Batch {
      *
      * @param deleteHostBuffer_ifFull If true, the host buffer will be destroyed if it is full.
      */
-    async writeDataToGPUBuffer(deleteHostBuffer_ifFull: boolean = false) {
+    writeDataToGPUBuffer(deleteHostBuffer_ifFull: boolean = false) {
         if (this.buffersReadyToWrite && !this.buffersInFlight) {
             this._device.queue.writeBuffer(this.gpuBuffer_coarse, 0, this.hostBuffer_coarse!.buffer, 0, this.hostBuffer_coarse!.byteLength);
             this._device.queue.writeBuffer(this.gpuBuffer_medium, 0, this.hostBuffer_medium!.buffer, 0, this.hostBuffer_medium!.byteLength);
@@ -404,6 +429,7 @@ export class Batch {
         delete this.hostBuffer_medium;
         delete this.hostBuffer_fine;
         delete this.hostBuffer_color;
+        delete this._oldPointsBuffer;
         console.log("Deleted host buffers for batch: ", this._id, "\ttotaling", this._bufferSize * 4 * 4 / (1024 ** 2), "MB");
     }
 
@@ -413,7 +439,7 @@ export class Batch {
      * @param numPointsToLoad The number of points to load.
      * @private
      */
-    private async findBoundingBox(data: ArrayBuffer, numPointsToLoad: number): Promise<void> {
+    private findBoundingBox(data: ArrayBuffer, numPointsToLoad: number) {
         const dataView = new DataView(data);
         for (let i = 0; i < numPointsToLoad; i++) {
             const x = dataView.getFloat32(i * 16, true);
@@ -745,5 +771,13 @@ export class Batch {
         if (this.bindGroups_rendering)
             return this.bindGroups_rendering[type];
         return null;
+    }
+
+    get_oldPointsBuffer(): ArrayBuffer {
+        return this._oldPointsBuffer!;
+    }
+
+    set_oldPointsBuffer(buffer: ArrayBuffer) {
+        this._oldPointsBuffer = buffer;
     }
 }

@@ -1,5 +1,6 @@
 import {vec2} from "webgpu-matrix";
 import {Batch} from "./Batch";
+import {SIZE_OF_POINT} from "../types/c_equivalents";
 
 export class BatchHandler {
     private counter: number = 0;
@@ -101,34 +102,66 @@ export class BatchHandler {
      * @param data The {@link ArrayBuffer} of data to be added to the batch handler. Arbitrary length.
      * @returns {Promise<void>} A promise that resolves when the data has been added to the batch handler.
      */
-    async add(data: ArrayBuffer): Promise<void> {
+    add(data: ArrayBuffer) {
         let remainingData = data;
+        let currentBatch = this._batches[this._batches.length - 1];
 
         while (remainingData.byteLength > 0) {
-            const currentBatch = this._batches[this._batches.length - 1];
-            const old_promise = currentBatch.readOutOldPoints();
+            // Find out how many points can fit into the current batch.
             const currentBatchFilledSize = currentBatch.filledSize();
             const remainingSpace = this._batchSize - currentBatchFilledSize * 16;
 
-            let dataToWrite = remainingData.slice(0, remainingSpace);
-            // I have to take the old points back out of the buffer and recompute them with the new bounding box.
-            const oldPoints = await old_promise;
-            if (oldPoints && oldPoints.byteLength > 0) {
-                // If there are old points, we need to add them to the data to write.
-                const oldPointsByteLength = oldPoints.byteLength;
-                const newDataToWrite = new Uint8Array(dataToWrite.byteLength + oldPointsByteLength);
-                newDataToWrite.set(new Uint8Array(oldPoints), 0);
-                newDataToWrite.set(new Uint8Array(dataToWrite), oldPointsByteLength);
-                dataToWrite = newDataToWrite.buffer;
-            }
-            const wait = currentBatch.loadData(dataToWrite);
+            // If the current batch is full, create a new batch.
+            if (remainingSpace <= 0) {
+                // currentBatch.writeDataToGPUBuffer(true);
+                currentBatch = this.addBatch();
+            } else {
+                // Calculate how much data we can write to the current batch.
+                // const maxDataToWrite = remainingSpace * SIZE_OF_POINT;
+                const dataToWrite = remainingData.slice(0, remainingSpace);
 
-            remainingData = remainingData.slice(remainingSpace);
-            if (remainingData.byteLength > 0) {
-                this.addBatch();
+                // Load the data into the current batch.
+                // await currentBatch.loadData(dataToWrite);
+                currentBatch.addNewData(dataToWrite);
+
+                // Update the remaining data.
+                remainingData = remainingData.slice(remainingSpace);
             }
-            await wait;
         }
+
+        // let remainingData = data;
+        //
+        // while (remainingData.byteLength > 0) {
+        //     let currentBatch = this._batches[this._batches.length - 1];
+        //     // const old_promise = currentBatch.readOutOldPoints();
+        //     const currentBatchFilledSize = currentBatch.filledSize();
+        //     const remainingSpace = this._batchSize - currentBatchFilledSize * 16;
+        //
+        //     let dataToWrite = remainingData.slice(0, remainingSpace);
+        //     if (dataToWrite.byteLength === 0) {
+        //         currentBatch = this.addBatch();
+        //     }
+        //     // I have to take the old points back out of the buffer and recompute them with the new bounding box.
+        //     // const oldPoints = await old_promise;
+        //     if (currentBatch.get_oldPointsBuffer() && currentBatch.get_oldPointsBuffer().byteLength > 0) {
+        //         // If there are old points, we need to add them to the data to write.
+        //         const oldPointsByteLength = currentBatch.get_oldPointsBuffer().byteLength;
+        //         const newDataToWrite = new Uint8Array(dataToWrite.byteLength + oldPointsByteLength);
+        //         newDataToWrite.set(new Uint8Array(currentBatch.get_oldPointsBuffer()), 0);
+        //         newDataToWrite.set(new Uint8Array(dataToWrite), oldPointsByteLength);
+        //         dataToWrite = newDataToWrite.buffer;
+        //     }
+        //     const wait = currentBatch.loadData(dataToWrite);
+        //     currentBatch.set_oldPointsBuffer(dataToWrite);
+        //
+        //     remainingData = remainingData.slice(remainingSpace);
+        //     if (remainingData.byteLength > 0) {
+        //         this.addBatch();
+        //     }
+        //
+        //     // Wait for the current batch to finish loading the data before continuing.
+        //     await wait;
+        // }
     }
 
     /**
@@ -136,11 +169,10 @@ export class BatchHandler {
      *
      * This method is called once per frame to decrease initial loading time.
      */
-    async writeOneBufferToGPU(): Promise<void> {
+    writeOneBufferToGPU() {
         for (let b of this._batches) {
             if (b.canBeWrittenToGPU()) {
-                await b.writeDataToGPUBuffer(true);
-                return;
+                b.writeDataToGPUBuffer(true);
             }
         }
     }

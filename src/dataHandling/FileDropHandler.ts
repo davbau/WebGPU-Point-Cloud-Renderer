@@ -193,22 +193,21 @@ export class FileDropHandler {
         // Load the points from the file
         const byteLength_to_cut = n * header.pointDataRecordLength;
         const chunk = file.slice(0, byteLength_to_cut);
-        this.lasLoader.loadLasPointsAsBuffer_FromPointRecords(chunk, this.file_headers_to_load[0]).then(points => {
-            if (points.byteLength === 0) {
-                console.warn("No points loaded from file");
-                // Remove the file from the queue if no points were loaded
-                this.files_to_load.shift();
-                this.file_headers_to_load.shift();
-                return;
-            }
-            // Remove the loaded points from the file
-            this.files_to_load[0] = file.slice(byteLength_to_cut);
-            this.batchHandler.add(points).then(() => {
-                this.batchHandler.writeOneBufferToGPU().then(() => console.log("Successfully added points to batch buffer"));
-            });
-        }).catch(err => {
-            console.error("Error loading points from file", err);
-        });
+        const points = this.lasLoader.loadLasPointsAsBuffer_FromPointRecords(chunk, this.file_headers_to_load[0])
+        if (points.byteLength === 0) {
+            console.warn("No points loaded from file");
+            // Remove the file from the queue if no points were loaded
+            this.files_to_load.shift();
+            this.file_headers_to_load.shift();
+            return;
+        }
+        // Remove the loaded points from the file
+        this.files_to_load[0] = file.slice(byteLength_to_cut);
+        // this.batchHandler.add(points).then(() => {
+        //     this.batchHandler.writeOneBufferToGPU().then(() => console.log("Successfully added points to batch buffer"));
+        // });
+        this.batchHandler.add(points);
+        this.batchHandler.writeOneBufferToGPU();
     }
 
     /**

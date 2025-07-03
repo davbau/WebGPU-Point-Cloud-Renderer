@@ -525,7 +525,8 @@ async function generateFrame(now: number) {
     // reset depth buffer
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
     // const upload_waiter = batchHandler.writeOneBufferToGPU();
-    fileDropHandler.requestNPointsToLoad(1e5);
+    // fileDropHandler.requestNPointsToLoad(1e6);
+    fileDropHandler.requestNPointsToLoad(Math.pow(2, 20)/2);
     const batches_shown: number[] = [];
     const batches_renderType: number[] = [];
 
