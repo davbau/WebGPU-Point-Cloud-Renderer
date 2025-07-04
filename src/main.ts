@@ -520,13 +520,12 @@ async function generateFrame(now: number) {
     const proj64 = Float64Array.from(camera.getProjectionMatrix());
     const view64 = Float64Array.from(camera.getViewMatrix());
     Util.multiplyMat4dTof64(proj64, view64, viewProjMatrix);
-    // Util.multiplyMat4dTof32(proj64, view64, mVP);
 
     // reset depth buffer
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
-    // const upload_waiter = batchHandler.writeOneBufferToGPU();
-    // fileDropHandler.requestNPointsToLoad(1e6);
-    fileDropHandler.requestNPointsToLoad(Math.pow(2, 20) / 4);
+    // fileDropHandler.requestNPointsToLoad(Math.pow(2, 20) / 4);
+    fileDropHandler.requestNPointsToLoad(BUFFER_HANDLER_SIZE / SIZE_OF_POINT);
+
     const batches_shown: number[] = [];
     const batches_renderType: number[] = [];
 

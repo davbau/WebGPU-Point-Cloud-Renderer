@@ -300,7 +300,8 @@ export class Batch {
      * @param deleteHostBuffer_ifFull If true, the host buffer will be destroyed if it is full.
      */
     writeDataToGPUBuffer(deleteHostBuffer_ifFull: boolean = false) {
-        if (this.buffersReadyToWrite && !this.buffersInFlight) {
+        // if (this.buffersReadyToWrite && !this.buffersInFlight) {
+        if (this.buffersReadyToWrite) {
             this._device.queue.writeBuffer(this.gpuBuffer_coarse, 0, this.hostBuffer_coarse!.buffer, 0, this.hostBuffer_coarse!.byteLength);
             this._device.queue.writeBuffer(this.gpuBuffer_medium, 0, this.hostBuffer_medium!.buffer, 0, this.hostBuffer_medium!.byteLength);
             this._device.queue.writeBuffer(this.gpuBuffer_fine, 0, this.hostBuffer_fine!.buffer, 0, this.hostBuffer_fine!.byteLength);

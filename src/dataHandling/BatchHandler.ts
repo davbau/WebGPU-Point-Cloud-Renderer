@@ -128,40 +128,6 @@ export class BatchHandler {
                 remainingData = remainingData.slice(remainingSpace);
             }
         }
-
-        // let remainingData = data;
-        //
-        // while (remainingData.byteLength > 0) {
-        //     let currentBatch = this._batches[this._batches.length - 1];
-        //     // const old_promise = currentBatch.readOutOldPoints();
-        //     const currentBatchFilledSize = currentBatch.filledSize();
-        //     const remainingSpace = this._batchSize - currentBatchFilledSize * 16;
-        //
-        //     let dataToWrite = remainingData.slice(0, remainingSpace);
-        //     if (dataToWrite.byteLength === 0) {
-        //         currentBatch = this.addBatch();
-        //     }
-        //     // I have to take the old points back out of the buffer and recompute them with the new bounding box.
-        //     // const oldPoints = await old_promise;
-        //     if (currentBatch.get_oldPointsBuffer() && currentBatch.get_oldPointsBuffer().byteLength > 0) {
-        //         // If there are old points, we need to add them to the data to write.
-        //         const oldPointsByteLength = currentBatch.get_oldPointsBuffer().byteLength;
-        //         const newDataToWrite = new Uint8Array(dataToWrite.byteLength + oldPointsByteLength);
-        //         newDataToWrite.set(new Uint8Array(currentBatch.get_oldPointsBuffer()), 0);
-        //         newDataToWrite.set(new Uint8Array(dataToWrite), oldPointsByteLength);
-        //         dataToWrite = newDataToWrite.buffer;
-        //     }
-        //     const wait = currentBatch.loadData(dataToWrite);
-        //     currentBatch.set_oldPointsBuffer(dataToWrite);
-        //
-        //     remainingData = remainingData.slice(remainingSpace);
-        //     if (remainingData.byteLength > 0) {
-        //         this.addBatch();
-        //     }
-        //
-        //     // Wait for the current batch to finish loading the data before continuing.
-        //     await wait;
-        // }
     }
 
     /**

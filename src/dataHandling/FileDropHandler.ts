@@ -201,13 +201,9 @@ export class FileDropHandler {
             this.file_headers_to_load.shift();
             return;
         }
+        this.batchHandler.add(points);
         // Remove the loaded points from the file
         this.files_to_load[0] = file.slice(byteLength_to_cut);
-        // this.batchHandler.add(points).then(() => {
-        //     this.batchHandler.writeOneBufferToGPU().then(() => console.log("Successfully added points to batch buffer"));
-        // });
-        this.batchHandler.add(points);
-        // this.batchHandler.writeOneBufferToGPU();
     }
 
     /**
