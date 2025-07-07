@@ -122,9 +122,13 @@ export class BatchHandler {
                 // const maxDataToWrite = remainingSpace * SIZE_OF_POINT;
                 const dataToWrite = remainingData.slice(0, remainingSpace);
 
+                // New method
                 // Load the data into the current batch.
                 currentBatch.loadData(dataToWrite, header);
-                currentBatch.writeDataToGPUBuffer(true);
+                // currentBatch.writeDataToGPUBuffer(true);
+                currentBatch.writeNewDataToGPUBuffer(currentBatchFilledSize * 4, dataToWrite.byteLength / 4, true);
+
+                // Old method
                 // currentBatch.addNewData(dataToWrite);
 
                 // Update the remaining data.

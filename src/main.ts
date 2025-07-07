@@ -524,7 +524,7 @@ async function generateFrame(now: number) {
 
     // reset depth buffer
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
-    fileDropHandler.requestNPointsToLoad(Math.pow(2, 20) / 16);
+    fileDropHandler.requestNPointsToLoad(Math.pow(2, 20) / 4);
     // fileDropHandler.requestNPointsToLoad(BUFFER_HANDLER_SIZE / SIZE_OF_POINT);
 
     const batches_shown: number[] = [];

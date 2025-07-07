@@ -239,8 +239,6 @@ export class Batch {
         const fineView = new DataView(this.hostBuffer_fine!.buffer);
         const colorView = new DataView(this.hostBuffer_color!.buffer);
 
-        // await boundingBoxFound;
-
         const boxSize = this.getBoxSize();
         const origin = this.getOrigin();
 
@@ -304,7 +302,6 @@ export class Batch {
         this.buffersReadyToWrite = true;
 
         this._filledSize += numPointsToLoad;
-        // return;
     }
 
     /**
@@ -320,6 +317,7 @@ export class Batch {
             this._device.queue.writeBuffer(this.gpuBuffer_medium, 0, this.hostBuffer_medium!.buffer, 0, this.hostBuffer_medium!.byteLength);
             this._device.queue.writeBuffer(this.gpuBuffer_fine, 0, this.hostBuffer_fine!.buffer, 0, this.hostBuffer_fine!.byteLength);
             this._device.queue.writeBuffer(this.gpuBuffer_color, 0, this.hostBuffer_color!.buffer, 0, this.hostBuffer_color!.byteLength);
+
             this.buffersInFlight = true;
 
             this.create_bindGroups();
@@ -337,6 +335,32 @@ export class Batch {
                 console.error("Error writing data to GPU buffer for Batch: ", this._id, error);
             });
         }
+    }
+
+    writeNewDataToGPUBuffer(from_byte: number, nr_bytes: number, deleteHostBuffer_ifFull: boolean = false) {
+        if (this.buffersReadyToWrite) {
+            const mult = 1;
+            this._device.queue.writeBuffer(this.gpuBuffer_coarse, from_byte, this.hostBuffer_coarse!.buffer, from_byte, nr_bytes * mult);
+            this._device.queue.writeBuffer(this.gpuBuffer_medium, from_byte, this.hostBuffer_medium!.buffer, from_byte, nr_bytes * mult);
+            this._device.queue.writeBuffer(this.gpuBuffer_fine, from_byte, this.hostBuffer_fine!.buffer, from_byte, nr_bytes * mult);
+            this._device.queue.writeBuffer(this.gpuBuffer_color, from_byte, this.hostBuffer_color!.buffer, from_byte, nr_bytes * mult);
+        }
+
+        this.buffersInFlight = true;
+
+        this.create_bindGroups();
+        this._device.queue.onSubmittedWorkDone().then(() => {
+            this.buffersReadyToWrite = false;
+            this.buffersWrittenToGPU = true;
+            this.buffersInFlight = false;
+            console.log(`Finished writing ${this.gpuBuffer_coarse.size * 4} bytes of data to GPU buffer for Batch: `, this._id);
+
+            if (deleteHostBuffer_ifFull && this.isFull()) {
+                this.destroyHostBuffers();
+            }
+        }).catch((error) => {
+            console.error("Error writing data to GPU buffer for Batch: ", this._id, error);
+        });
     }
 
     /**
@@ -587,7 +611,7 @@ export class Batch {
         // Check intersection with the NDC cube [-1, 1] on all axes
         return ndcMin[0] <= 1 && ndcMax[0] >= -1 &&
             ndcMin[1] <= 1 && ndcMax[1] >= -1
-            // && ndcMin[2] <= 1 && ndcMax[2] >= -1; // This seems to cause issues. I'll leave depth testing fully up to the GPU for now.
+        // && ndcMin[2] <= 1 && ndcMax[2] >= -1; // This seems to cause issues. I'll leave depth testing fully up to the GPU for now.
     }
 
     /**
