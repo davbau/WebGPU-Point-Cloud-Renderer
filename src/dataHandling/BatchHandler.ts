@@ -1,6 +1,7 @@
 import {vec2} from "webgpu-matrix";
 import {Batch} from "./Batch";
 import {SIZE_OF_POINT} from "../types/c_equivalents";
+import {LASHeader_small} from "./SmallLASLoader";
 
 export class BatchHandler {
     private counter: number = 0;
@@ -100,9 +101,10 @@ export class BatchHandler {
     /**
      * Add an arbitrary amount of data to the batch handler. The data is split into batches of size batchSize.
      * @param data The {@link ArrayBuffer} of data to be added to the batch handler. Arbitrary length.
+     * @param header
      * @returns {Promise<void>} A promise that resolves when the data has been added to the batch handler.
      */
-    add(data: ArrayBuffer) {
+    add(data: ArrayBuffer, header: LASHeader_small | null = null) {
         let remainingData = data;
         let currentBatch = this._batches[this._batches.length - 1];
 
@@ -121,8 +123,9 @@ export class BatchHandler {
                 const dataToWrite = remainingData.slice(0, remainingSpace);
 
                 // Load the data into the current batch.
-                // await currentBatch.loadData(dataToWrite);
-                currentBatch.addNewData(dataToWrite);
+                currentBatch.loadData(dataToWrite, header);
+                currentBatch.writeDataToGPUBuffer(true);
+                // currentBatch.addNewData(dataToWrite);
 
                 // Update the remaining data.
                 remainingData = remainingData.slice(remainingSpace);

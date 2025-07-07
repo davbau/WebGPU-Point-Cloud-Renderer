@@ -201,7 +201,7 @@ export class FileDropHandler {
             this.file_headers_to_load.shift();
             return;
         }
-        this.batchHandler.add(points);
+        this.batchHandler.add(points, header);
         // Remove the loaded points from the file
         this.files_to_load[0] = file.slice(byteLength_to_cut);
     }

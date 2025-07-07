@@ -1,6 +1,7 @@
 import {mat4, vec2, vec3, vec4} from "webgpu-matrix";
 import {u_int32} from "../types/c_equivalents";
 import {Util} from "../utils/util";
+import {LASHeader_small} from "./SmallLASLoader";
 
 type UniformType = {
     // origin of the bounding box, will be padded to vec4 = 16 bytes
@@ -190,6 +191,8 @@ export class Batch {
 
         this._oldPointsBuffer = allData.buffer;
 
+        // reset buffers
+        this._filledSize = 0;
         this.loadData(allData.buffer);
         this.writeDataToGPUBuffer(true);
     }
@@ -200,8 +203,9 @@ export class Batch {
      * @param data The points to load in the format: [x1, y1, z1, c1, x2, y2, z2, c2, ...]
      * x, y, z are the coordinates of the point and c is the color of the point.
      * x, y, z are f32 and c is an uint32.
+     * @param header
      */
-    loadData(data: ArrayBuffer) {
+    loadData(data: ArrayBuffer, header: LASHeader_small | null = null) {
         // // add old points to the current input.
         // const all_data = new Uint8Array(this._filledSize * 16 + new_data.byteLength);
         // if (this._oldPointsBuffer && this._oldPointsBuffer.byteLength > 0) {
@@ -214,10 +218,20 @@ export class Batch {
         const numPointsToLoad = data.byteLength / 16;
 
         // find bounding box
-        this.findBoundingBox(data, numPointsToLoad);
-
-        // reset buffers
-        this._filledSize = 0;
+        // this.findBoundingBox(data, numPointsToLoad);
+        if (header !== null) {
+            this._boundingBox = [
+                header.minX, header.minY, header.minZ,
+                header.maxX, header.maxY, header.maxZ
+            ];
+            this._size = [
+                (header.maxX - header.minX),
+                (header.maxY - header.minY),
+                (header.maxZ - header.minZ)
+            ];
+        } else {
+            this.findBoundingBox(data, numPointsToLoad);
+        }
 
         // Process the points and load them into the host buffers.
         const courseView = new DataView(this.hostBuffer_coarse!.buffer);

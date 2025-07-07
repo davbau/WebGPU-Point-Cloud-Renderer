@@ -16,6 +16,7 @@ struct Uniforms {
 
 // The factor is used to convert the 30 bit integer coordinates to float coordinates using the batch origin and size.
 const factor = 1073741823.0; // 0b0011_1111_1111_1111_1111_1111_1111_1111
+const points_per_thread = 1;
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> depthBuffer: array<atomic<u32>>;
@@ -32,10 +33,25 @@ fn main(
     @builtin(workgroup_id) wid: vec3<u32>,
     @builtin(num_workgroups) num_wg: vec3<u32>
 ) {
+    for (var i = 0u; i<points_per_thread; i++) {
+        // Calculate the point index based on the global invocation ID and the number of workgroups.
+        let pointIndex = gid.y * num_wg.x * points_per_thread + gid.x * points_per_thread + i;
+
+        // Ensure we don't go out of bounds.
+//        if (pointIndex >= u32(uniforms.canvas_size.x) * u32(uniforms.canvas_size.y)) {
+//            return;
+//        }
+
+        // Call the test function to compute depth for each point.
+        test(pointIndex);
+    }
+}
+
+fn test(pointIndex: u32) {
     let renderMode = uniforms.renderingInfo.x;
     let tpw = u32(uniforms.renderingInfo.y);
 
-    let pointIndex = gid.y * num_wg.x * tpw + gid.x;
+//    let pointIndex = gid.y * num_wg.x * tpw + gid.x;
     var p = vec3<u32>(0, 0, 0);
 //    /*C*/p = coarse(pointIndex);
 //    /*M*/p = medium(pointIndex);

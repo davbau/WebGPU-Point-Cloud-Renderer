@@ -61,7 +61,7 @@ const maxStorageBufferBindingSize = device.limits.maxStorageBufferBindingSize;
 // Read out url parameter for buffer handler size.
 const urlParams = new URLSearchParams(window.location.search);
 let handlerSizeParameter = urlParams.get('bSize');
-let BUFFER_HANDLER_SIZE = ((Math.pow(2, 20))) * 128; // for storage 2^20 is about 1e6
+let BUFFER_HANDLER_SIZE = ((Math.pow(2, 20))) * 1024; // for storage 2^20 is about 1e6
 if (handlerSizeParameter) {
     handlerSizeParameter = handlerSizeParameter.toLowerCase();
     let decoded = 0;
@@ -499,6 +499,7 @@ depthBuffer.unmap();
 let lastFrameTime = performance.now();
 
 let numberOfPoints = 0;
+const points_per_thread = 1;
 
 /**
  * The main function that generates the frame. This function is called recursively using requestAnimationFrame.
@@ -523,8 +524,8 @@ async function generateFrame(now: number) {
 
     // reset depth buffer
     device.queue.writeBuffer(depthBuffer, 0, initial_depthBuffer.buffer, 0, initial_depthBuffer.byteLength);
-    // fileDropHandler.requestNPointsToLoad(Math.pow(2, 20) / 4);
-    fileDropHandler.requestNPointsToLoad(BUFFER_HANDLER_SIZE / SIZE_OF_POINT);
+    fileDropHandler.requestNPointsToLoad(Math.pow(2, 20) / 16);
+    // fileDropHandler.requestNPointsToLoad(BUFFER_HANDLER_SIZE / SIZE_OF_POINT);
 
     const batches_shown: number[] = [];
     const batches_renderType: number[] = [];
@@ -584,7 +585,7 @@ async function generateFrame(now: number) {
         let nr_pointsInCurrentBuffer = batch.filledSize();
 
         // Region Workgroups
-        const totalWorkGroups = Math.ceil(nr_pointsInCurrentBuffer / THREADS_PER_WORKGROUP);
+        const totalWorkGroups = Math.ceil(nr_pointsInCurrentBuffer / (THREADS_PER_WORKGROUP * points_per_thread));
 
         if (totalWorkGroups <= device.limits.maxComputeWorkgroupsPerDimension) {
             xWorkGroups = totalWorkGroups;
@@ -667,7 +668,7 @@ async function generateFrame(now: number) {
         let nr_pointsInCurrentBuffer = batch.filledSize();
 
         // Region Workgroups
-        const totalWorkGroups = Math.ceil(nr_pointsInCurrentBuffer / THREADS_PER_WORKGROUP);
+        const totalWorkGroups = Math.ceil(nr_pointsInCurrentBuffer / (THREADS_PER_WORKGROUP * points_per_thread));
 
         if (totalWorkGroups <= device.limits.maxComputeWorkgroupsPerDimension) {
             xWorkGroups = totalWorkGroups;
